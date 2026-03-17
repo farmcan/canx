@@ -74,3 +74,15 @@ If you are a fresh agent session, read these files first:
 1. `START_HERE.md`
 2. `README.md`
 3. `AGENTS.md`
+
+## Run the MVP
+
+```bash
+go run ./cmd/canxd -goal "ship canx mvp" -max-turns 2 -repo .
+```
+
+Expected output shape:
+
+```text
+canx loop ready: goal=... max_turns=... workspace=... docs=...
+```

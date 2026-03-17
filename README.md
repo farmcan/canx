@@ -49,6 +49,7 @@ For larger projects, this makes AI-assisted development slower and less reliable
 
 ## Reference docs
 
+- Start here: `START_HERE.md`
 - Project context: `docs/2026-03-17-project-context.md`
 - Requirements: `docs/2026-03-17-requirements.md`
 - MVP design: `docs/2026-03-17-canx-mvp-design.md`
@@ -70,9 +71,6 @@ Build only the thin supervisor layer that is missing for your workflow.
 
 If you are a fresh agent session, read these files first:
 
-1. `README.md`
-2. `AGENTS.md`
-3. `docs/2026-03-17-project-context.md`
-4. `docs/2026-03-17-requirements.md`
-5. `docs/2026-03-17-canx-mvp-design.md`
-6. `docs/2026-03-17-naming-and-positioning.md`
+1. `START_HERE.md`
+2. `README.md`
+3. `AGENTS.md`

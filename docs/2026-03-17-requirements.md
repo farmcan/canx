@@ -11,6 +11,7 @@
 The system should help the user:
 
 - accelerate software iteration with multiple Codex agents
+- shift development from human-agent chat loops to AI-to-AI collaboration loops
 - keep architecture and product intent stable across fresh agent sessions
 - avoid uncontrolled “infinite loops” by enforcing bounded execution
 - separate infrastructure concerns from downstream business repositories
@@ -21,6 +22,7 @@ The system should help the user:
 A fresh agent should be able to understand the repository quickly by reading a small number of files and seeing:
 
 - what this repository is for
+- what pain point it solves
 - what it is not for
 - what the first milestone is
 - which modules own which responsibilities
@@ -43,6 +45,7 @@ A fresh agent should be able to understand the repository quickly by reading a s
 - low ceremony for iteration
 - testable core logic
 - repo-local documentation for new agents
+- bounded context handoff between agents
 
 ## First milestone requirements
 

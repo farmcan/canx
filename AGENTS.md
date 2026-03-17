@@ -12,6 +12,8 @@ Scope: this file applies to the entire `canx/` repository.
 - `CanX` is a reusable supervisor/orchestrator for Codex-driven development.
 - Keep this repository infrastructure-focused; business logic belongs in downstream repos such as `Tradex`.
 - Prefer thin orchestration over rebuilding existing agent frameworks from scratch.
+- Treat the primary problem as **AI-to-AI collaboration**, not human-chat optimization.
+- Humans should provide goals, approvals, and exception handling; agents should perform the main delivery loop.
 
 ## Start-here protocol
 
@@ -37,6 +39,7 @@ Scope: this file applies to the entire `canx/` repository.
 - One agent owns one task scope at a time.
 - Avoid parallel edits to the same files.
 - Encode repeated agent mistakes into docs, tests, or lint rules.
+- Keep agent context small; prefer passing curated task packets over sharing long conversation history.
 
 ## Validation
 

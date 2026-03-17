@@ -13,6 +13,20 @@ The user wants a development accelerator where:
 
 This should be reusable across projects and not mixed into `Tradex` business code.
 
+## Core pain point
+
+The current single-agent workflow is too centered on human-agent interaction:
+
+- a single agent carries too much context
+- execution slows down as the conversation grows
+- the same agent is expected to plan, implement, review, verify, and explain
+
+The user wants the default workflow to become:
+
+- AI agents collaborate with other AI agents
+- humans define goals and step in for critical choices
+- development moves through bounded loops with clear gates
+
 ## Desired outcome
 
 Build a thin orchestration layer that can:

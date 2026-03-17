@@ -1,6 +1,6 @@
 # CanX
 
-Supervisor-driven multi-agent orchestration for Codex-based software development.
+AI-to-AI software delivery orchestration for bounded, multi-agent development.
 
 ## Purpose
 
@@ -12,6 +12,18 @@ Supervisor-driven multi-agent orchestration for Codex-based software development
 - bounded execution loops with budget, test, and merge gates
 
 It is designed to help projects such as `Tradex` iterate faster without mixing business logic and agent runtime logic in the same repository.
+
+## Problem statement
+
+Single-agent development is still too human-centric:
+
+- one agent spends most of its time talking to a human instead of collaborating with other agents
+- large repository context accumulates in one thread and slows execution down
+- one agent is forced to juggle architecture, implementation, review, verification, and documentation at once
+
+For larger projects, this makes AI-assisted development slower and less reliable than it should be.
+
+`CanX` exists to turn AI development into an AI-to-AI delivery pipeline where humans define goals and approve important decisions, while agents handle the main execution loop.
 
 ## Non-goals
 
@@ -39,6 +51,8 @@ It is designed to help projects such as `Tradex` iterate faster without mixing b
 
 - Project context: `docs/2026-03-17-project-context.md`
 - Requirements: `docs/2026-03-17-requirements.md`
+- MVP design: `docs/2026-03-17-canx-mvp-design.md`
+- MVP plan: `docs/2026-03-17-canx-mvp-plan.md`
 - Name and scope: `docs/2026-03-17-naming-and-positioning.md`
 - Research landscape: `docs/research/2026-03-17-orchestrator-landscape.md`
 
@@ -60,4 +74,5 @@ If you are a fresh agent session, read these files first:
 2. `AGENTS.md`
 3. `docs/2026-03-17-project-context.md`
 4. `docs/2026-03-17-requirements.md`
-5. `docs/2026-03-17-naming-and-positioning.md`
+5. `docs/2026-03-17-canx-mvp-design.md`
+6. `docs/2026-03-17-naming-and-positioning.md`

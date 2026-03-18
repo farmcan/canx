@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/farmcan/canx/internal/sessions"
+	"github.com/farmcan/canx/internal/tasks"
 )
 
 func TestWriteSessionReportPersistsJSONFile(t *testing.T) {
@@ -19,6 +20,9 @@ func TestWriteSessionReportPersistsJSONFile(t *testing.T) {
 			LastSummary: "done",
 		},
 		Decision: "stop",
+		Tasks: []tasks.Task{
+			{ID: "task-1", Goal: "ship mvp", Status: tasks.StatusDone},
+		},
 	}
 
 	path, err := WriteSessionReport(dir, report)

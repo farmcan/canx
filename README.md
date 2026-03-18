@@ -85,7 +85,7 @@ go run ./cmd/canxd -goal "ship canx mvp" -max-turns 2 -repo .
 Expected output shape:
 
 ```text
-canx decision=... reason=... turns=... session=... workspace=... docs=...
+canx decision=... reason=... turns=... tasks=... session=... workspace=... docs=...
 ```
 
 For a fast local demo without invoking real Codex:

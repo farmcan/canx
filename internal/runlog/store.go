@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/farmcan/canx/internal/sessions"
+	"github.com/farmcan/canx/internal/tasks"
 )
 
 type SessionReport struct {
@@ -14,6 +15,7 @@ type SessionReport struct {
 	Decision  string           `json:"decision"`
 	Reason    string           `json:"reason"`
 	TurnCount int              `json:"turn_count"`
+	Tasks     []tasks.Task     `json:"tasks,omitempty"`
 	WrittenAt time.Time        `json:"written_at"`
 }
 

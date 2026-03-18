@@ -123,7 +123,8 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			return Outcome{}, err
 		}
 		outcome.Session = session
-		outcome.Tasks = updateTaskStatuses(outcome.Tasks, reviewResult.Approved)
+		taskDone := reviewResult.Approved || strings.Contains(result.Output, stopMarker)
+		outcome.Tasks = updateTaskStatuses(outcome.Tasks, taskDone)
 
 		switch {
 		case strings.Contains(result.Output, stopMarker):

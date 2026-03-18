@@ -51,11 +51,12 @@ For larger projects, this makes AI-assisted development slower and less reliable
 
 - Start here: `START_HERE.md`
 - Product intent: `docs/2026-03-18-product-intent.md`
-- Project context: `docs/2026-03-17-project-context.md`
 - Requirements: `docs/2026-03-17-requirements.md`
 - MVP design: `docs/2026-03-17-canx-mvp-design.md`
-- MVP plan: `docs/2026-03-17-canx-mvp-plan.md`
+- MVP plan history: `docs/2026-03-17-canx-mvp-plan.md`
+- Current review/status: `docs/review.md`
 - Landscape analysis: `docs/2026-03-18-landscape-analysis.md`
+- Codex/OpenClaw/Ralph/ACP notes: `docs/research/2026-03-18-codex-openclaw-ralph-acp.md`
 - Research landscape: `docs/research/2026-03-17-orchestrator-landscape.md`
 
 ## Initial principle

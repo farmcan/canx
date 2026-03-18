@@ -21,12 +21,11 @@ Scope: this file applies to the entire `canx/` repository.
   1. `START_HERE.md`
   2. `README.md`
   3. `docs/2026-03-18-product-intent.md`
-  4. `docs/2026-03-17-project-context.md`
-  5. `docs/2026-03-17-requirements.md`
-  6. `docs/2026-03-17-canx-mvp-design.md`
-  7. `docs/2026-03-17-canx-mvp-plan.md`
-- `docs/research/` is reference material, not mandatory first-pass reading.
-- `docs/2026-03-18-landscape-analysis.md` is a high-value reference when planning MVP2+ changes, especially around multi-agent orchestration choices.
+  4. `docs/2026-03-17-requirements.md`
+  5. `docs/2026-03-17-canx-mvp-design.md`
+  6. `docs/review.md`
+- `docs/2026-03-17-canx-mvp-plan.md` is historical implementation context, not mandatory first-pass reading.
+- `docs/2026-03-18-landscape-analysis.md` and `docs/research/` are high-value references when planning MVP2+ changes.
 
 ## Engineering rules
 

@@ -1,5 +1,7 @@
 # CanX MVP Implementation Plan
 
+> Historical note: this file describes the original MVP execution plan. Current implementation status and next useful gaps are better reflected in `docs/review.md`.
+
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the first local single-machine `CanX` orchestrator that can load repository context, define bounded tasks, invoke Codex through an `exec` runner, apply a lightweight review gate, and stop with a clear loop decision.

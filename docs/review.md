@@ -1,179 +1,202 @@
 # CanX MVP Code Review
 
-**日期:** 2026-03-18
-**范围:** 全仓库，对照 `docs/2026-03-18-product-intent.md` 和 `docs/2026-03-17-canx-mvp-design.md`
-**测试状态:** `go test ./...` 全部通过
+**第一版：** 2026-03-18（初始骨架）
+**本版：** 2026-03-18（第二轮，反映当前代码状态）
+**范围：** 全仓库，对照 `docs/2026-03-18-product-intent.md` 和 `docs/2026-03-17-canx-mvp-design.md`
+**测试状态：** `go test ./...` 全部通过
 
 ---
 
-## 总体评价
+## 第一轮修复进度
 
-骨架搭得扎实，TDD 执行到位，所有核心模块都有测试覆盖，零外部依赖（纯标准库），模块边界清晰。对于一个"证明流程可行"的 MVP，当前代码已经达到了设计文档所描述的最低目标。
+第一轮发现的问题大多已在后续提交中修复，具体如下：
 
-但有几个明显的结构性偏差和若干中小问题，需要在进入下一个迭代前修正或明确。
-
----
-
-## 与设计意图的符合度
-
-| 设计要求 | 实现状态 | 说明 |
-|---|---|---|
-| 有界控制循环（max turns / timeout / stop marker）| ✅ 已实现 | engine.go 全部覆盖 |
-| Runner 接口 + ExecRunner + 预留 AppServerRunner | ✅ 已实现 | 接口拆分合理 |
-| Workspace 加载（README / AGENTS / docs）| ✅ 已实现 | 但有脆弱性，见下文 |
-| Review gate | ✅ 已实现 | 但 InScope 硬编码，见下文 |
-| Run log | ⚠️ 部分实现 | Entry 有模型，但不持久化 |
-| Task 模型 | ⚠️ 模型存在但完全未接入 | tasks 包是孤岛 |
-| 时间预算（time budget）| ❌ 未实现 | Config 只有 MaxTurns，无总时间上限 |
-| Session 管理 | ✅ 已实现 | 内存态，合理 |
-| 结构化日志 | ⚠️ 内存态 | 无持久化，无 timestamp |
+| 问题 | 状态 |
+|---|---|
+| `tasks` 包是孤岛，未接入 Engine | ✅ 已修复：加了 `Planner` 接口，Engine 调用 `Planner.Plan()` |
+| 没有总时间预算 | ✅ 已修复：`Config.BudgetSeconds` + Engine 的 `context.WithTimeout` |
+| `workspace.Load` 强制要求 AGENTS.md | ✅ 已修复：改为 `os.IsNotExist` 容错 |
+| runlog 不持久化 | ✅ 已修复：`store.go` 写入 `.canx/sessions/<id>.json` |
+| `runValidation` 硬编码 `zsh -lc` | ✅ 已修复：改为 `sh -c` |
+| `main()` 用 `panic` | ✅ 已修复：改为 `fmt.Fprintf(os.Stderr)` + `os.Exit(1)` |
+| `buildPrompt` 塞原始输出 | ✅ 已修复：改为 `summarizeTurn` 摘要 |
+| `canxd` binary 被 git 追踪 | ✅ 已修复：`.gitignore` 加了 `/canxd` 和 `/.canx/` |
+| Session 无时间戳 | ✅ 已修复：加了 `CreatedAt`、`UpdatedAt`、`LastSummary` |
+| CLI 无 session 查看命令 | ✅ 新增：`canxd sessions list` / `canxd sessions show <id>` |
 
 ---
 
-## 重要问题（建议在下一步之前解决）
+## 当前状态评估
 
-### 1. `internal/tasks` 是孤岛
-
-任务模型定义齐全，但 `loop/engine.go` 完全没有使用它。当前 Engine 直接运行 Prompt，没有任何任务分解。
-
-设计文档明确要求：
-> supervisor defines or updates task list → dispatch one or more worker tasks
-
-实际上 Engine 只是循环调用 Runner，完全没有"supervisor 把 Goal 分解成 Task，再按 Task 调度"的逻辑。
-
-**影响：** 这是最大的结构性偏差。设计的核心价值（AI-to-AI 任务拆解和分配）目前不存在于运行路径中。
-
-**建议：** 明确这是 MVP 的有意简化（记录在文档里），或者在下一步把 Task 接入 Engine，让 supervisor 用 Codex 生成初始任务列表。
+代码整体质量明显提升。任务模型已接入运行路径，持久化已实现，CLI 变成了一个真正可用的工具。以下是当前仍然存在的问题。
 
 ---
 
-### 2. `review.Evaluate` 的 `InScope` 永远为 `true`
+## 重要问题
 
-`engine.go` 第 85-88 行：
+### 1. `StaticPlanner` 命名误导，且有 ID 碰撞风险
+
+`StaticPlanner.Plan()` 总是把整个 goal 包装成一个 task，ID 固定为 `"task-1"`：
+
+```go
+func (StaticPlanner) Plan(goal string) ([]Task, error) {
+    task := Task{
+        ID:     "task-1",
+        // ...
+    }
+    return []Task{task}, nil
+}
+```
+
+两个问题：
+1. **命名**：`StaticPlanner` 这个名字暗示"配置静态的"，而不是"永远只产生一个 task"。更准确的名字是 `SingleTaskPlanner` 或 `IdentityPlanner`。
+2. **ID 固定**：如果将来有多个并发 Engine 实例，或者 Planner 被复用，`"task-1"` 会冲突。ID 应该基于 goal 做 hash，或者引入一个 ID 生成器。
+
+---
+
+### 2. `updateTaskStatuses` 只更新第一个 task
+
+```go
+func updateTaskStatuses(items []tasks.Task, done bool) []tasks.Task {
+    // ...
+    if done {
+        next[0].Status = tasks.StatusDone
+    } else {
+        next[0].Status = tasks.StatusInProgress
+    }
+    return next
+}
+```
+
+当前 `StaticPlanner` 只返回一个 task，所以没问题。但这个函数是为多 task 场景设计的（接受 `[]Task`），却只更新 `index 0`。一旦 `Planner` 返回多个任务，这里会静默地忽略其他任务。
+
+**建议：** 要么明确注释"只跟踪第一个活跃任务"，要么改为按状态查找第一个 `pending/in_progress` 的 task 来更新，而不是硬用 `[0]`。
+
+---
+
+### 3. `Planner` 接口缺少 `context.Context`
+
+```go
+type Planner interface {
+    Plan(goal string) ([]Task, error)
+}
+```
+
+未来的 `CodxPlanner`（调用 Codex 生成任务列表）需要能够响应超时和取消。现在的接口签名不支持这个。
+
+**建议：** 改为 `Plan(ctx context.Context, goal string) ([]Task, error)`。这是一个破坏性变更，越早做代价越低。
+
+---
+
+### 4. `buildPrompt` 加载了 `repo.Docs` 但从不使用
+
+`workspace.Load` 收集了 `docs/` 下所有 Markdown 文档，存在 `repo.Docs []Document` 里，但 `buildPrompt` 完全忽略了它：
+
+```go
+func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task, turns []Turn) string {
+    // ...
+    builder.WriteString(repo.Readme)  // 用了
+    builder.WriteString(repo.Agents) // 用了
+    // repo.Docs 从未出现在这里
+}
+```
+
+设计文档明确要求工作区加载包括"a small number of high-signal docs under docs/"，目的是让 worker 理解项目背景。现在这些 docs 白加载了，worker 看不到它们。
+
+**建议：** 在 `buildPrompt` 里加入 docs 注入，同时建议加 token 预算截断（不是所有 docs 都要注入，有些 target repo 的 docs/ 可能很大）。
+
+---
+
+### 5. `review.Evaluate` 的 `InScope` 仍然硬编码为 `true`
 
 ```go
 reviewResult := review.Evaluate(review.Result{
     Validated: validationPassed,
-    InScope:   true,
+    InScope:   true,  // 永远 true
 })
 ```
 
-`InScope` 被硬编码，review gate 对"worker 是否跑偏了"没有任何实际判断。Review gate 目前等价于：`Approved = validationPassed`。
+这个问题从第一轮开始就存在，仍未修复。`review.Result.InScope` 字段的存在暗示有 scope 检查逻辑，但实际上 `Evaluate` 对 InScope 的判断毫无意义，因为调用方永远传 `true`。
 
-**建议：** 如果当前不打算做真正的 scope 检查，直接把 `InScope` 字段从 `Evaluate` 中移除，或者在文档里注明这是 stub。保留字段但永远传 `true` 会让读者以为有实际逻辑。
+**建议：** 二选一：要么实现真实的 scope 检查（比较 `cfg.FilesInScope` 和 runner 实际修改的文件），要么把 `InScope` 从 `Result` 里删掉，直到真正需要时再加回来。
 
 ---
 
-### 3. `workspace.Load` 要求 AGENTS.md 必须存在
+## 中等问题
+
+### 6. `canxd sessions list` 目录不存在时报错
 
 ```go
-agents, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+entries, err := os.ReadDir(sessionsDir)
 if err != nil {
-    return Context{}, err
+    return "", err
 }
 ```
 
-对于没有 AGENTS.md 的目标仓库（比如 Tradex 还没接入 CanX 规范），整个加载直接失败。设计文档说 AGENTS.md 是"如果存在则加载"，而非必选。
+用户第一次运行 `canxd sessions list`（还没有跑过任何 run）时，`.canx/sessions` 不存在，命令会返回错误而不是空列表。
 
-**建议：** 对 AGENTS.md 使用 `os.IsNotExist` 容错，README.md 保持必选。
-
----
-
-### 4. runlog 没有持久化
-
-`runlog.Entry` 被创建并追加到 `Outcome.Logs`，但整个 Outcome 只存在于内存中，进程退出即消失。
-
-设计文档要求：
-> creates durable memory without relying on long prompt history
-
-**建议：** 在 MVP 阶段至少将 Logs append 写入一个 JSONL 文件（比如 `.canx/runs/<timestamp>.jsonl`）。不需要复杂，`encoding/json` + `os.OpenFile` 即可。
+**建议：** 用 `os.IsNotExist` 判断，目录不存在时直接返回空字符串或 `"(no sessions)"`。
 
 ---
 
-### 5. 没有总时间预算（time budget）
+### 7. `sessions.Registry.List()` 与 CLI 的 sessions 路径不一致
 
-设计文档的 Inputs 列表包含：
-> time budget
+`sessions.Registry` 有一个 `List()` 方法，但 `inspectSessions` 函数绕过了 Registry，直接用 `os.ReadDir` 读磁盘文件。这意味着：
 
-`loop.Config` 只有 `MaxTurns`，没有 `Deadline time.Time` 或 `Budget time.Duration`。单次 `TurnTimeout` 乘以 `MaxTurns` 不等同于总预算，因为 validation 时间不计入 TurnTimeout。
+- Registry.List() 只能列出当前进程内存中的会话（这个进程跑完就消失了）
+- CLI 的 `sessions list` 从磁盘读历史记录
 
-**建议：** `Config` 添加 `Budget time.Duration`，在 `Run()` 开始时用 `context.WithTimeout(ctx, cfg.Budget)` 包住整个循环。
+两套 "list" 的语义不同，容易让后来的开发者误用 `Registry.List()`。
 
----
-
-## 中等问题（下一阶段处理即可）
-
-### 6. `main()` 的错误处理用了 `panic`
-
-```go
-if err != nil {
-    panic(err)
-}
-```
-
-CLI 工具应该用 `fmt.Fprintf(os.Stderr, "canx: %v\n", err)` + `os.Exit(1)`，panic 会输出 goroutine stack，对终端用户来说噪音很大。
+**建议：** 考虑把 `Registry.List()` 删掉或标注为"仅用于测试"，因为持久化的历史 sessions 只能从磁盘读取。
 
 ---
 
-### 7. `runValidation` 硬编码 `zsh -lc`
+### 8. `sessions.Registry` 仍然没有并发保护
 
-```go
-cmd := exec.CommandContext(ctx, "zsh", "-lc", command)
-```
+`Registry.sessions` 是无锁的 `map`。当前引擎是单 goroutine 顺序执行，不会触发 race。但 Engine.Run 被多 goroutine 并发调用时（比如将来的并发 worker 场景），同一个 Registry 实例会产生数据竞争。
 
-在 Linux CI / Docker 环境会失败（zsh 未安装或行为不同）。
-
-**建议：** 改为 `sh -c`，或者把 shell 作为可配置参数。
+**建议：** 加 `sync.RWMutex`，或者在 `Registry` 的 godoc 里明确注明"非并发安全，每个 Engine.Run 调用应传入独立 Registry 实例"。
 
 ---
 
-### 8. `sessions.Registry` 没有并发保护
+### 9. `go.mod` 声明 `go 1.25.0`，版本尚不存在
 
-`Registry.sessions` 是普通 `map`，没有 mutex。当前引擎是单 goroutine，所以不会 race，但如果将来在同一 Registry 上并发操作（比如 appserver runner 场景），会触发 race detector。
+截至 2026-03，最新发布版为 1.24.x，`go 1.25.0` 尚未正式发布。
 
-**建议：** 加 `sync.RWMutex`，或者在注释里明确"非并发安全，每个 Run 调用应有独立 Registry"。
-
----
-
-### 9. `buildPrompt` 把上一轮完整 Output 塞入 prompt
-
-```go
-builder.WriteString(last.RunnerResult.Output)
-```
-
-Codex 输出可能很长（diff、日志等），每一轮都追加会导致 prompt 快速膨胀。
-
-**建议：** 用 `summarizeTurn` 的摘要版本，而不是原始输出。
+**建议：** 改为 `go 1.24`。
 
 ---
 
-### 10. `canxd` 编译产物被 git 追踪
+## 小问题
 
-仓库根目录存在 `canxd` 二进制文件。应加入 `.gitignore`。
+- **`ExecRunner` 传 prompt 作为位置参数**：`exec.CommandContext(ctx, r.bin, "exec", req.Prompt)` 把整个 prompt 字符串作为第三个 CLI 参数。Codex CLI 的 `codex exec` 实际接口需要验证——长 prompt（含换行符）作为 shell 参数可能有问题。考虑改为 stdin 或临时文件。
 
----
+- **`Request.MaxTurns` 未被 `ExecRunner` 使用**：`codex.Request.MaxTurns` 字段存在，Engine 传了 `MaxTurns: 1`，但 ExecRunner 构建的命令行根本不包含这个参数。这个字段在 ExecRunner 路径下是死字段。
 
-### 11. `go.mod` 声明 `go 1.25.0`，版本不存在
+- **`ModeOneshot` 从未被使用**：Engine 始终创建 `ModePersistent` session，`sessions.ModeOneshot` 没有任何代码路径。
 
-截至 2026-03 最新发布版为 1.24.x，`go 1.25.0` 尚未发布。建议改为 `go 1.24`。
+- **`Makefile` 的 `fmt` 目标**：`gofmt -w $(shell find . -type f -name '*.go' -not -path './vendor/*')` 可以简化为 `gofmt -w ./...`。
 
----
-
-## 小问题（可以随手修或推后）
-
-- **`Makefile` 的 `fmt` 目标**：`gofmt -w $(shell find ...)` 可改为 `gofmt -w ./...`，更简洁。
-- **`Task.Status` 用字符串常量**：可以定义 `type Status string` 增加类型安全，但 MVP 阶段影响不大。
-- **`runlog.Entry` 无时间戳**：`Entry` 缺少 `Timestamp time.Time`，事后无法追溯单条记录的时间。
-- **`loop/engine_test.go` 中的 `fakeRunner` 与 `codex.MockRunner` 有微小重复**：两者行为几乎一致，区别仅在于 fakeRunner 到达末尾后停留在最后一个结果。可以考虑统一，但现阶段影响可控。
-- **`sessions` 模块的 `ModeOneshot` 存在但从未使用**：Engine 始终创建 `ModePersistent` session，oneshot 分支代码没有覆盖路径。
+- **`fakeRunner`（engine_test.go）与 `codex.MockRunner` 行为近似重复**：两者的差异仅在 index 越界处理。可以统一，但当前影响可控。
 
 ---
 
-## 有没有重复造轮子？
+## 整体评价（第二轮）
 
-总体没有。代码保持了"薄封装"的原则，没有自建 agent 框架、没有自建模型运行时。
+相比第一轮，代码成熟度提升明显：
 
-一个值得关注的点：`sessions.Registry` 提供了 Spawn / Steer / Close 生命周期，这和 Codex app-server 本身的 session 模型高度重叠。未来切换到 `AppServerRunner` 之后，这个 Registry 可能会成为冗余层。建议在接入 `AppServerRunner` 时重新评估 sessions 包是否还需要存在，或者限定 Registry 只用于 ExecRunner 场景。
+- 任务模型有了真正的接入路径（Planner → Engine → Outcome.Tasks）
+- 持久化从零到可用（`store.go` + `sessions show/list`）
+- CLI 变成了一个有子命令结构的真实工具
+- 时间预算、AGENTS.md 容错、`sh -c` 都已修复
+
+**剩余的核心问题是两个"下一步必须做"：**
+
+1. **`buildPrompt` 不注入 docs**：这是 workspace 加载存在的意义，现在是空转。
+2. **`Planner` 接口缺 context**：越早改代价越低，一旦有了 AI Planner 就必须改。
+
+其他问题（`InScope` 硬编码、`updateTaskStatuses` 只更新 index 0、`sessions list` 报错）都是在下一个迭代前应顺手修的。
 
 ---
 
@@ -181,10 +204,10 @@ Codex 输出可能很长（diff、日志等），每一轮都追加会导致 pro
 
 优先级排序：
 
-1. **明确 tasks 包的定位**：是刻意推迟还是遗漏？在 START_HERE.md 或 review 里说清楚。
-2. **修复 workspace.Load 对 AGENTS.md 的强制要求**（10 分钟内可完成）。
-3. **给 Config 添加 Budget 字段并接入 context**。
-4. **runlog 持久化**：最小实现是写 JSONL 文件，不需要数据库。
-5. **review.InScope 去除硬编码**：要么实现真实判断，要么移除该字段。
-6. **main() panic → os.Exit(1)**。
-7. **把 canxd 加入 .gitignore**。
+1. **给 `Planner` 接口加 `context.Context` 参数**（破坏性变更，越早越好）。
+2. **在 `buildPrompt` 里注入 `repo.Docs`**，加 token 预算截断（比如总 docs 长度不超过 4000 字符）。
+3. **`updateTaskStatuses` 改为找第一个 pending/in_progress 的 task**，而不是硬用 `[0]`。
+4. **`canxd sessions list` 目录不存在时返回空列表**（5 分钟内可完成）。
+5. **明确 `review.InScope`**：实现真实判断，或者删掉这个字段。
+6. **`StaticPlanner` 改名为 `SingleTaskPlanner`**，并修复固定 ID 问题。
+7. **`go.mod` 改为 `go 1.24`**。

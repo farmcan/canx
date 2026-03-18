@@ -5,10 +5,9 @@ If you are a fresh agent session, read these files in order:
 1. `README.md`
 2. `AGENTS.md`
 3. `docs/2026-03-18-product-intent.md`
-4. `docs/2026-03-17-project-context.md`
-5. `docs/2026-03-17-requirements.md`
-6. `docs/2026-03-17-canx-mvp-design.md`
-7. `docs/2026-03-17-canx-mvp-plan.md`
+4. `docs/2026-03-17-requirements.md`
+5. `docs/2026-03-17-canx-mvp-design.md`
+6. `docs/review.md`
 
 ## Repository in one paragraph
 
@@ -38,6 +37,12 @@ Then continue with:
 - `internal/review`
 - `internal/runlog`
 - `cmd/canxd`
+
+Optional background reading:
+
+- `docs/2026-03-17-canx-mvp-plan.md`
+- `docs/2026-03-18-landscape-analysis.md`
+- `docs/research/`
 
 ## Rules of engagement
 

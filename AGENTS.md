@@ -26,6 +26,7 @@ Scope: this file applies to the entire `canx/` repository.
   6. `docs/2026-03-17-canx-mvp-design.md`
   7. `docs/2026-03-17-canx-mvp-plan.md`
 - `docs/research/` is reference material, not mandatory first-pass reading.
+- `docs/2026-03-18-landscape-analysis.md` is a high-value reference when planning MVP2+ changes, especially around multi-agent orchestration choices.
 
 ## Engineering rules
 

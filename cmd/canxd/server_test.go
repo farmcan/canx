@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -191,7 +192,7 @@ func TestServeExposesRoomsAPI(t *testing.T) {
 		t.Fatalf("rooms len = %d, want %d", got, want)
 	}
 
-	postBody := []byte(`{"participant_id":"human-1","role":"human","kind":"instruction","body":"adjust strategy"}`)
+	postBody := []byte(`{"participant_id":"human-1","role":"human","kind":"instruction","task_id":"task-1","body":"adjust strategy"}`)
 	postReq := httptest.NewRequest("POST", "/api/rooms/room-1/messages", bytes.NewReader(postBody))
 	postResp := httptest.NewRecorder()
 	mux.ServeHTTP(postResp, postReq)
@@ -214,5 +215,40 @@ func TestServeExposesRoomsAPI(t *testing.T) {
 	}
 	if messages[0].Body != "adjust strategy" {
 		t.Fatalf("message body = %q", messages[0].Body)
+	}
+	if messages[0].TaskID != "task-1" {
+		t.Fatalf("message task_id = %q", messages[0].TaskID)
+	}
+}
+
+func TestServeExposesSSEEvents(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	store := runlog.NewEventStore(root)
+	if err := store.SaveRun(runlog.RunRecord{ID: "run-1", Goal: "ship", RepoRoot: root, Status: "done"}); err != nil {
+		t.Fatalf("SaveRun() error = %v", err)
+	}
+	if err := store.AppendEvent("run-1", runlog.Event{Kind: "run_finished", Message: "done"}); err != nil {
+		t.Fatalf("AppendEvent() error = %v", err)
+	}
+
+	mux, err := newServerMux(store)
+	if err != nil {
+		t.Fatalf("newServerMux() error = %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/api/runs/run-1/events/stream", nil)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+	if resp.Code != 200 {
+		t.Fatalf("sse status = %d", resp.Code)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if !bytes.Contains(body, []byte("event: run_finished")) {
+		t.Fatalf("unexpected sse body: %s", string(body))
 	}
 }

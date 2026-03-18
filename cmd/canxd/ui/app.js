@@ -1,6 +1,8 @@
 let currentRun = null;
 let currentContext = null;
 let currentRoom = null;
+let currentTask = null;
+let currentEventSource = null;
 
 async function fetchJSON(path) {
   const response = await fetch(path);
@@ -66,6 +68,7 @@ async function loadRun(runID) {
   await renderSession(run.session_id);
   renderContext(context);
   renderRooms(rooms, run.id);
+  startEventStream(run.id);
 }
 
 function renderTasks(run) {
@@ -83,6 +86,7 @@ function renderTasks(run) {
       <div class="task-row-goal">${task.goal || task.Goal}</div>
     `;
     row.onclick = async () => {
+      currentTask = task.id || task.ID;
       const detail = await fetchJSON(`/api/runs/${run.id}/tasks/${task.id || task.ID}`);
       document.getElementById('task-detail').textContent = JSON.stringify(detail, null, 2);
     };
@@ -90,6 +94,7 @@ function renderTasks(run) {
   });
 
   if ((run.tasks || []).length > 0) {
+    currentTask = run.tasks[0].id || run.tasks[0].ID;
     document.getElementById('task-detail').textContent = JSON.stringify(run.tasks[0], null, 2);
   }
 }
@@ -194,6 +199,20 @@ async function loadRoom(roomID) {
   document.getElementById('room-messages').textContent = JSON.stringify(messages, null, 2);
 }
 
+function startEventStream(runID) {
+  if (currentEventSource) {
+    currentEventSource.close();
+  }
+  currentEventSource = new EventSource(`/api/runs/${runID}/events/stream`);
+  currentEventSource.onmessage = async () => {
+    const events = await fetchJSON(`/api/runs/${runID}/events`);
+    document.getElementById('events').textContent = JSON.stringify(events, null, 2);
+  };
+  currentEventSource.onerror = () => {
+    currentEventSource.close();
+  };
+}
+
 document.getElementById('refresh').onclick = () => {
   currentRun = null;
   loadRuns().catch((error) => {
@@ -218,6 +237,7 @@ document.getElementById('room-form').onsubmit = async (event) => {
       participant_id: 'human-local',
       role: 'human',
       kind: 'instruction',
+      task_id: currentTask || '',
       body
     })
   });

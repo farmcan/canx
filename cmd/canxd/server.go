@@ -90,6 +90,23 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 				return
 			}
 			writeJSON(w, events)
+		case len(parts) == 3 && parts[1] == "events" && parts[2] == "stream":
+			events, err := store.LoadEvents(runID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			for _, event := range events {
+				data, err := json.Marshal(event)
+				if err != nil {
+					writeError(w, err)
+					return
+				}
+				_, _ = fmt.Fprintf(w, "event: %s\n", event.Kind)
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+			}
 		default:
 			http.NotFound(w, r)
 		}

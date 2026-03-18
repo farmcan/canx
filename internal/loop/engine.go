@@ -42,6 +42,7 @@ type Turn struct {
 	Prompt           string
 	RunnerResult     codex.Result
 	ValidationPassed bool
+	ValidationOutput string
 	Review           review.Result
 }
 
@@ -101,7 +102,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			return Outcome{}, err
 		}
 
-		validationPassed := runValidation(turnCtx, e.Workdir, cfg.ValidationCommands)
+		validationPassed, validationOutput := runValidation(turnCtx, e.Workdir, cfg.ValidationCommands)
 		cancel()
 		reviewResult := review.Evaluate(review.Result{
 			Validated: validationPassed,
@@ -113,6 +114,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			Prompt:           prompt,
 			RunnerResult:     result,
 			ValidationPassed: validationPassed,
+			ValidationOutput: validationOutput,
 			Review:           reviewResult,
 		})
 		outcome.Logs = append(outcome.Logs, runlog.Entry{
@@ -185,13 +187,9 @@ func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task,
 			if content == "" {
 				continue
 			}
-			if len(content) > promptDocSnippetLimit {
-				content = content[:promptDocSnippetLimit]
-			}
+			content = truncateUTF8(content, promptDocSnippetLimit)
 			remaining := promptDocsBudget - usedChars
-			if len(content) > remaining {
-				content = content[:remaining]
-			}
+			content = truncateUTF8(content, remaining)
 			builder.WriteString("\n")
 			builder.WriteString(doc.Path)
 			builder.WriteString(":\n")
@@ -205,6 +203,10 @@ func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task,
 		last := turns[len(turns)-1]
 		builder.WriteString("\n\nPrevious turn summary:\n")
 		builder.WriteString(summarizeTurn(last.Number, last.RunnerResult.Output, last.ValidationPassed))
+		if last.ValidationOutput != "" {
+			builder.WriteString("\n\nValidation errors from last turn:\n")
+			builder.WriteString(last.ValidationOutput)
+		}
 	}
 	builder.WriteString("\n\nRespond with progress, and include [canx:stop] when the task is complete.")
 	return builder.String(), docsUsed
@@ -231,9 +233,9 @@ func updateTaskStatuses(items []tasks.Task, done bool) []tasks.Task {
 	return next
 }
 
-func runValidation(ctx context.Context, workdir string, commands []string) bool {
+func runValidation(ctx context.Context, workdir string, commands []string) (bool, string) {
 	if len(commands) == 0 {
-		return false
+		return false, ""
 	}
 
 	for _, command := range commands {
@@ -241,12 +243,13 @@ func runValidation(ctx context.Context, workdir string, commands []string) bool 
 		if workdir != "" {
 			cmd.Dir = workdir
 		}
-		if err := cmd.Run(); err != nil {
-			return false
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return false, formatValidationFailure(command, string(output))
 		}
 	}
 
-	return true
+	return true, ""
 }
 
 func reviewDecision(validated bool, output string, turn, maxTurns int) string {
@@ -274,4 +277,38 @@ func summarizeTurn(turn int, output string, validated bool) string {
 	}
 
 	return "turn=" + strconv.Itoa(turn) + " " + status + " output=" + summary
+}
+
+func formatValidationFailure(command, output string) string {
+	output = strings.TrimSpace(output)
+	if len(output) > 500 {
+		output = output[:500] + "\n...(truncated)"
+	}
+	if output == "" {
+		output = "(no output)"
+	}
+
+	var builder strings.Builder
+	builder.WriteString(command)
+	builder.WriteString(":\n")
+	builder.WriteString(output)
+	return builder.String()
+}
+
+func truncateUTF8(input string, limit int) string {
+	if limit <= 0 || len(input) <= limit {
+		if limit <= 0 {
+			return ""
+		}
+		return input
+	}
+
+	runes := 0
+	for index := range input {
+		if index > limit {
+			return input[:runes]
+		}
+		runes = index
+	}
+	return input[:runes]
 }

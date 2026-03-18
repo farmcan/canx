@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"os/exec"
+	"strings"
 )
 
 type ExecRunner struct {
@@ -18,7 +19,12 @@ func (r ExecRunner) Run(ctx context.Context, req Request) (Result, error) {
 		return Result{}, err
 	}
 
-	cmd := exec.CommandContext(ctx, r.bin, "exec", req.Prompt)
+	args := []string{"exec", "-"}
+	if shouldSkipGitRepoCheck(req.Workdir) {
+		args = append(args, "--skip-git-repo-check")
+	}
+	cmd := exec.CommandContext(ctx, r.bin, args...)
+	cmd.Stdin = strings.NewReader(req.Prompt)
 	if req.Workdir != "" {
 		cmd.Dir = req.Workdir
 	}
@@ -28,11 +34,21 @@ func (r ExecRunner) Run(ctx context.Context, req Request) (Result, error) {
 		return Result{
 			Output:   string(output),
 			ExitCode: 1,
-		}, err
+		}, RunError{Err: err, Output: strings.TrimSpace(string(output))}
 	}
 
 	return Result{
 		Output:   string(output),
 		ExitCode: 0,
 	}, nil
+}
+
+func shouldSkipGitRepoCheck(workdir string) bool {
+	if workdir == "" {
+		return false
+	}
+
+	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	cmd.Dir = workdir
+	return cmd.Run() != nil
 }

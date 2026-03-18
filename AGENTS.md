@@ -23,8 +23,10 @@ Scope: this file applies to the entire `canx/` repository.
   3. `docs/2026-03-18-product-intent.md`
   4. `docs/2026-03-17-requirements.md`
   5. `docs/2026-03-17-canx-mvp-design.md`
-  6. `docs/review.md`
+  6. `docs/2026-03-18-usable-platform-plan.md`
+  7. `docs/review.md`
 - `docs/2026-03-17-canx-mvp-plan.md` is historical implementation context, not mandatory first-pass reading.
+- `docs/2026-03-18-usable-platform-plan.md` is the current execution plan for moving from MVP skeleton to usable platform behavior.
 - `docs/2026-03-18-landscape-analysis.md` and `docs/research/` are high-value references when planning MVP2+ changes.
 
 ## Engineering rules

@@ -28,3 +28,19 @@ type Result struct {
 	Output   string
 	ExitCode int
 }
+
+type RunError struct {
+	Err    error
+	Output string
+}
+
+func (e RunError) Error() string {
+	if e.Output == "" {
+		return e.Err.Error()
+	}
+	return e.Err.Error() + ": " + e.Output
+}
+
+func (e RunError) Unwrap() error {
+	return e.Err
+}

@@ -7,7 +7,8 @@ If you are a fresh agent session, read these files in order:
 3. `docs/2026-03-18-product-intent.md`
 4. `docs/2026-03-17-requirements.md`
 5. `docs/2026-03-17-canx-mvp-design.md`
-6. `docs/review.md`
+6. `docs/2026-03-18-usable-platform-plan.md`
+7. `docs/review.md`
 
 ## Repository in one paragraph
 

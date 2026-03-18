@@ -2,8 +2,10 @@ package loop
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/sessions"
@@ -159,9 +161,9 @@ func TestEngineUsesFirstActiveTaskNotJustIndexZero(t *testing.T) {
 	t.Parallel()
 
 	engine := Engine{
-		Runner:   &fakeRunner{results: []codex.Result{{Output: "done [canx:stop]"}}},
-		Workdir:  ".",
-		Planner:  fixedPlanner{tasks: []tasks.Task{{ID: "t1", Goal: "done", Status: tasks.StatusDone}, {ID: "t2", Goal: "active", Status: tasks.StatusPending}}},
+		Runner:  &fakeRunner{results: []codex.Result{{Output: "done [canx:stop]"}}},
+		Workdir: ".",
+		Planner: fixedPlanner{tasks: []tasks.Task{{ID: "t1", Goal: "done", Status: tasks.StatusDone}, {ID: "t2", Goal: "active", Status: tasks.StatusPending}}},
 	}
 
 	outcome, err := engine.Run(context.Background(), Config{
@@ -174,6 +176,51 @@ func TestEngineUsesFirstActiveTaskNotJustIndexZero(t *testing.T) {
 
 	if got, want := outcome.Tasks[1].Status, tasks.StatusDone; got != want {
 		t.Fatalf("second task status = %q, want %q", got, want)
+	}
+}
+
+func TestEnginePassesValidationOutputToNextTurn(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner: &fakeRunner{
+			results: []codex.Result{
+				{Output: "first try"},
+				{Output: "fixed [canx:stop]"},
+			},
+		},
+		Workdir: ".",
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:               "fix the test",
+		MaxTurns:           2,
+		ValidationCommands: []string{"echo TEST_FAILED && false"},
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(outcome.Turns) < 2 {
+		t.Fatal("expected at least 2 turns")
+	}
+	if !strings.Contains(outcome.Turns[1].Prompt, "TEST_FAILED") {
+		t.Fatalf("turn 2 prompt missing validation output: %q", outcome.Turns[1].Prompt)
+	}
+}
+
+func TestBuildPromptKeepsUTF8ValidWhenTruncatingDocs(t *testing.T) {
+	t.Parallel()
+
+	doc := strings.Repeat("中", promptDocSnippetLimit+1)
+	prompt, _ := buildPrompt("ship mvp", workspace.Context{
+		Root:   ".",
+		Readme: "readme",
+		Docs:   []workspace.Document{{Path: "docs/utf8.md", Content: doc}},
+	}, nil, nil)
+
+	if !utf8.ValidString(prompt) {
+		t.Fatal("expected prompt to remain valid utf-8")
 	}
 }
 

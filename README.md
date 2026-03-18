@@ -54,6 +54,7 @@ For larger projects, this makes AI-assisted development slower and less reliable
 - Requirements: `docs/2026-03-17-requirements.md`
 - MVP design: `docs/2026-03-17-canx-mvp-design.md`
 - MVP plan history: `docs/2026-03-17-canx-mvp-plan.md`
+- Current practical plan: `docs/2026-03-18-usable-platform-plan.md`
 - Current review/status: `docs/review.md`
 - Landscape analysis: `docs/2026-03-18-landscape-analysis.md`
 - Codex/OpenClaw/Ralph/ACP notes: `docs/research/2026-03-18-codex-openclaw-ralph-acp.md`

@@ -217,10 +217,47 @@ func TestBuildPromptKeepsUTF8ValidWhenTruncatingDocs(t *testing.T) {
 		Root:   ".",
 		Readme: "readme",
 		Docs:   []workspace.Document{{Path: "docs/utf8.md", Content: doc}},
-	}, nil, nil)
+	}, nil, nil, -1)
 
 	if !utf8.ValidString(prompt) {
 		t.Fatal("expected prompt to remain valid utf-8")
+	}
+}
+
+func TestEngineRunsMultipleTasksInSequence(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner: &fakeRunner{results: []codex.Result{
+			{Output: "task 1 done [canx:stop]"},
+			{Output: "task 2 done [canx:stop]"},
+		}},
+		Workdir: ".",
+		Planner: fixedPlanner{tasks: []tasks.Task{
+			{ID: "t1", Title: "Task 1", Goal: "do first thing", Status: tasks.StatusPending},
+			{ID: "t2", Title: "Task 2", Goal: "do second thing", Status: tasks.StatusPending},
+		}},
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:     "do both things",
+		MaxTurns: 4,
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	doneCount := 0
+	for _, task := range outcome.Tasks {
+		if task.Status == tasks.StatusDone {
+			doneCount++
+		}
+	}
+	if got, want := doneCount, 2; got != want {
+		t.Fatalf("done tasks = %d, want %d", got, want)
+	}
+	if got, want := len(outcome.Turns), 2; got != want {
+		t.Fatalf("turns = %d, want %d", got, want)
 	}
 }
 

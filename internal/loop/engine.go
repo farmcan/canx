@@ -84,13 +84,21 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		Tasks:   plannedTasks,
 	}
 	for turn := 1; turn <= cfg.MaxTurns; turn++ {
+		activeIndex := firstActiveTaskIndex(outcome.Tasks)
+		if activeIndex == -1 {
+			session, _ = e.Sessions.Close(session.ID)
+			outcome.Session = session
+			outcome.Decision = Decision{Action: ActionStop, Reason: "all tasks complete"}
+			return outcome, nil
+		}
+
 		turnCtx := ctx
 		cancel := func() {}
 		if e.TurnTimeout > 0 {
 			turnCtx, cancel = context.WithTimeout(ctx, e.TurnTimeout)
 		}
 
-		prompt, docsUsed := buildPrompt(cfg.Goal, repo, outcome.Tasks, outcome.Turns)
+		prompt, docsUsed := buildPrompt(cfg.Goal, repo, outcome.Tasks, outcome.Turns, activeIndex)
 		outcome.PromptDocsUsed = docsUsed
 		result, err := e.Runner.Run(turnCtx, codex.Request{
 			Prompt:   prompt,
@@ -128,15 +136,21 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		}
 		outcome.Session = session
 		taskDone := reviewResult.Approved || strings.Contains(result.Output, stopMarker)
-		outcome.Tasks = updateTaskStatuses(outcome.Tasks, taskDone)
+		outcome.Tasks = updateTaskStatuses(outcome.Tasks, activeIndex, taskDone)
 
 		switch {
 		case strings.Contains(result.Output, stopMarker):
+			if firstActiveTaskIndex(outcome.Tasks) != -1 {
+				continue
+			}
 			session, _ = e.Sessions.Close(session.ID)
 			outcome.Session = session
 			outcome.Decision = Decision{Action: ActionStop, Reason: "runner requested stop"}
 			return outcome, nil
 		case reviewResult.Approved:
+			if firstActiveTaskIndex(outcome.Tasks) != -1 {
+				continue
+			}
 			session, _ = e.Sessions.Close(session.ID)
 			outcome.Session = session
 			outcome.Decision = Decision{Action: ActionStop, Reason: "validation passed"}
@@ -153,14 +167,26 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 const promptDocsBudget = 4000
 const promptDocSnippetLimit = 800
 
-func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task, turns []Turn) (string, int) {
+func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task, turns []Turn, activeIndex int) (string, int) {
 	var builder strings.Builder
 	docsUsed := 0
 	builder.WriteString("Goal:\n")
 	builder.WriteString(goal)
-	if len(plannedTasks) > 0 {
-		builder.WriteString("\n\nTasks:\n")
-		for _, task := range plannedTasks {
+	if len(plannedTasks) > 0 && activeIndex >= 0 && activeIndex < len(plannedTasks) {
+		builder.WriteString("\n\nActive task:\n")
+		builder.WriteString("- [")
+		builder.WriteString(plannedTasks[activeIndex].Status)
+		builder.WriteString("] ")
+		builder.WriteString(plannedTasks[activeIndex].Title)
+		builder.WriteString(": ")
+		builder.WriteString(plannedTasks[activeIndex].Goal)
+		builder.WriteString("\n")
+
+		builder.WriteString("\nQueued tasks:\n")
+		for index, task := range plannedTasks {
+			if index == activeIndex {
+				continue
+			}
 			builder.WriteString("- [")
 			builder.WriteString(task.Status)
 			builder.WriteString("] ")
@@ -212,23 +238,20 @@ func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task,
 	return builder.String(), docsUsed
 }
 
-func updateTaskStatuses(items []tasks.Task, done bool) []tasks.Task {
+func updateTaskStatuses(items []tasks.Task, activeIndex int, done bool) []tasks.Task {
 	if len(items) == 0 {
 		return items
 	}
 
 	next := make([]tasks.Task, len(items))
 	copy(next, items)
-	for index, item := range next {
-		if item.Status != tasks.StatusPending && item.Status != tasks.StatusInProgress {
-			continue
-		}
-		if done {
-			next[index].Status = tasks.StatusDone
-		} else {
-			next[index].Status = tasks.StatusInProgress
-		}
+	if activeIndex < 0 || activeIndex >= len(next) {
 		return next
+	}
+	if done {
+		next[activeIndex].Status = tasks.StatusDone
+	} else {
+		next[activeIndex].Status = tasks.StatusInProgress
 	}
 	return next
 }
@@ -311,4 +334,13 @@ func truncateUTF8(input string, limit int) string {
 		runes = index
 	}
 	return input[:runes]
+}
+
+func firstActiveTaskIndex(items []tasks.Task) int {
+	for index, item := range items {
+		if item.Status == tasks.StatusPending || item.Status == tasks.StatusInProgress {
+			return index
+		}
+	}
+	return -1
 }

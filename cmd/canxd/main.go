@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/loop"
@@ -25,6 +26,8 @@ func main() {
 type Options struct {
 	RepoPath    string
 	CodexBin    string
+	RunnerMode  string
+	TurnTimeout time.Duration
 	Validations []string
 }
 
@@ -34,6 +37,8 @@ func parseFlags() (loop.Config, Options) {
 		maxTurns = flag.Int("max-turns", 1, "maximum number of loop turns")
 		repoPath = flag.String("repo", ".", "target repository path")
 		codexBin = flag.String("codex-bin", "codex", "codex binary path")
+		runner   = flag.String("runner", "exec", "runner mode: exec or mock")
+		timeout  = flag.Duration("turn-timeout", 30*time.Second, "timeout per loop turn")
 	)
 	var validations multiFlag
 	flag.Var(&validations, "validate", "validation command to run after each turn (repeatable)")
@@ -46,12 +51,23 @@ func parseFlags() (loop.Config, Options) {
 		}, Options{
 			RepoPath:    *repoPath,
 			CodexBin:    *codexBin,
+			RunnerMode:  *runner,
+			TurnTimeout: *timeout,
 			Validations: validations,
 		}
 }
 
 func run(cfg loop.Config, opts Options) (string, error) {
-	return runWithRunner(cfg, opts, codex.NewExecRunner(opts.CodexBin))
+	switch opts.RunnerMode {
+	case "", "exec":
+		return runWithRunner(cfg, opts, codex.NewExecRunner(opts.CodexBin))
+	case "mock":
+		return runWithRunner(cfg, opts, codex.NewMockRunner(codex.Result{
+			Output: "mock worker progress [canx:stop]",
+		}))
+	default:
+		return "", fmt.Errorf("unknown runner mode: %s", opts.RunnerMode)
+	}
 }
 
 func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, error) {
@@ -76,8 +92,9 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 
 	cfg.ValidationCommands = opts.Validations
 	engine := loop.Engine{
-		Runner:  runner,
-		Workdir: absRepoPath,
+		Runner:      runner,
+		Workdir:     absRepoPath,
+		TurnTimeout: opts.TurnTimeout,
 	}
 
 	outcome, err := engine.Run(context.Background(), cfg, repo)

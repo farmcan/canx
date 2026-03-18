@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/workspace"
@@ -91,6 +92,24 @@ func TestEngineStopsOnStopMarker(t *testing.T) {
 	}
 }
 
+func TestEngineHonorsTurnTimeout(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner:      slowRunner{delay: 100 * time.Millisecond},
+		Workdir:     ".",
+		TurnTimeout: 10 * time.Millisecond,
+	}
+
+	_, err := engine.Run(context.Background(), Config{
+		Goal:     "ship mvp",
+		MaxTurns: 1,
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+}
+
 type fakeRunner struct {
 	results []codex.Result
 	index   int
@@ -102,4 +121,17 @@ func (r *fakeRunner) Run(_ context.Context, _ codex.Request) (codex.Result, erro
 		r.index++
 	}
 	return result, nil
+}
+
+type slowRunner struct {
+	delay time.Duration
+}
+
+func (r slowRunner) Run(ctx context.Context, _ codex.Request) (codex.Result, error) {
+	select {
+	case <-ctx.Done():
+		return codex.Result{}, ctx.Err()
+	case <-time.After(r.delay):
+		return codex.Result{Output: "late"}, nil
+	}
 }

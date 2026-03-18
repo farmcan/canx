@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/review"
@@ -18,8 +19,9 @@ const stopMarker = "[canx:stop]"
 var ErrMissingRunner = errors.New("missing runner")
 
 type Engine struct {
-	Runner  codex.Runner
-	Workdir string
+	Runner      codex.Runner
+	Workdir     string
+	TurnTimeout time.Duration
 }
 
 type Outcome struct {
@@ -46,17 +48,25 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 
 	outcome := Outcome{}
 	for turn := 1; turn <= cfg.MaxTurns; turn++ {
+		turnCtx := ctx
+		cancel := func() {}
+		if e.TurnTimeout > 0 {
+			turnCtx, cancel = context.WithTimeout(ctx, e.TurnTimeout)
+		}
+
 		prompt := buildPrompt(cfg.Goal, repo, outcome.Turns)
-		result, err := e.Runner.Run(ctx, codex.Request{
+		result, err := e.Runner.Run(turnCtx, codex.Request{
 			Prompt:   prompt,
 			Workdir:  e.Workdir,
 			MaxTurns: 1,
 		})
 		if err != nil {
+			cancel()
 			return Outcome{}, err
 		}
 
-		validationPassed := runValidation(ctx, e.Workdir, cfg.ValidationCommands)
+		validationPassed := runValidation(turnCtx, e.Workdir, cfg.ValidationCommands)
+		cancel()
 		reviewResult := review.Evaluate(review.Result{
 			Validated: validationPassed,
 			InScope:   true,

@@ -87,6 +87,12 @@ Expected output shape:
 canx decision=... reason=... turns=... workspace=... docs=...
 ```
 
+For a fast local demo without invoking real Codex:
+
+```bash
+go run ./cmd/canxd -goal "ship canx mvp" -max-turns 2 -repo . -runner mock
+```
+
 ## Fast eval
 
 Run the lightweight smoke suite:

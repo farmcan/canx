@@ -84,7 +84,7 @@ go run ./cmd/canxd -goal "ship canx mvp" -max-turns 2 -repo .
 Expected output shape:
 
 ```text
-canx decision=... reason=... turns=... workspace=... docs=...
+canx decision=... reason=... turns=... session=... workspace=... docs=...
 ```
 
 For a fast local demo without invoking real Codex:
@@ -92,6 +92,15 @@ For a fast local demo without invoking real Codex:
 ```bash
 go run ./cmd/canxd -goal "ship canx mvp" -max-turns 2 -repo . -runner mock
 ```
+
+## Current MVP2 shape
+
+The current local MVP now includes:
+
+- Ralph-lite bounded loop control
+- Codex runner abstraction
+- lightweight session registry inspired by ACP/session models
+- fast smoke evals
 
 ## Fast eval
 

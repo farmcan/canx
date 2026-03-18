@@ -11,6 +11,7 @@ import (
 	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/review"
 	"github.com/farmcan/canx/internal/runlog"
+	"github.com/farmcan/canx/internal/sessions"
 	"github.com/farmcan/canx/internal/workspace"
 )
 
@@ -22,9 +23,11 @@ type Engine struct {
 	Runner      codex.Runner
 	Workdir     string
 	TurnTimeout time.Duration
+	Sessions    *sessions.Registry
 }
 
 type Outcome struct {
+	Session  sessions.Session
 	Turns    []Turn
 	Decision Decision
 	Logs     []runlog.Entry
@@ -45,8 +48,20 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 	if e.Runner == nil {
 		return Outcome{}, ErrMissingRunner
 	}
+	if e.Sessions == nil {
+		e.Sessions = sessions.NewRegistry()
+	}
 
-	outcome := Outcome{}
+	session, err := e.Sessions.Spawn(sessions.SpawnRequest{
+		Label: "main",
+		Mode:  sessions.ModePersistent,
+		CWD:   e.Workdir,
+	})
+	if err != nil {
+		return Outcome{}, err
+	}
+
+	outcome := Outcome{Session: session}
 	for turn := 1; turn <= cfg.MaxTurns; turn++ {
 		turnCtx := ctx
 		cancel := func() {}
@@ -84,17 +99,28 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			Decision: reviewDecision(validationPassed, result.Output, turn, cfg.MaxTurns),
 			Summary:  summarizeTurn(turn, result.Output, validationPassed),
 		})
+		session, err = e.Sessions.Steer(session.ID, summarizeTurn(turn, result.Output, validationPassed))
+		if err != nil {
+			return Outcome{}, err
+		}
+		outcome.Session = session
 
 		switch {
 		case strings.Contains(result.Output, stopMarker):
+			session, _ = e.Sessions.Close(session.ID)
+			outcome.Session = session
 			outcome.Decision = Decision{Action: ActionStop, Reason: "runner requested stop"}
 			return outcome, nil
 		case reviewResult.Approved:
+			session, _ = e.Sessions.Close(session.ID)
+			outcome.Session = session
 			outcome.Decision = Decision{Action: ActionStop, Reason: "validation passed"}
 			return outcome, nil
 		}
 	}
 
+	session, _ = e.Sessions.Close(session.ID)
+	outcome.Session = session
 	outcome.Decision = Decision{Action: ActionEscalate, Reason: "max turns reached"}
 	return outcome, nil
 }

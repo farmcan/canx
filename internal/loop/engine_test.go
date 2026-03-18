@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/farmcan/canx/internal/codex"
+	"github.com/farmcan/canx/internal/sessions"
 	"github.com/farmcan/canx/internal/workspace"
 )
 
@@ -33,6 +34,9 @@ func TestEngineStopsWhenValidationPasses(t *testing.T) {
 	}
 	if got, want := outcome.Decision.Action, ActionStop; got != want {
 		t.Fatalf("Run() decision = %q, want %q", got, want)
+	}
+	if outcome.Session.ID == "" {
+		t.Fatal("expected session to be created")
 	}
 }
 
@@ -107,6 +111,33 @@ func TestEngineHonorsTurnTimeout(t *testing.T) {
 	}, workspace.Context{Root: ".", Readme: "readme"})
 	if err == nil {
 		t.Fatal("expected timeout error")
+	}
+}
+
+func TestEngineWritesTurnSummariesToSession(t *testing.T) {
+	t.Parallel()
+
+	registry := sessions.NewRegistry()
+	engine := Engine{
+		Runner:   &fakeRunner{results: []codex.Result{{Output: "first turn"}, {Output: "second turn [canx:stop]"}}},
+		Workdir:  ".",
+		Sessions: registry,
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:     "ship mvp",
+		MaxTurns: 2,
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	session, err := registry.Get(outcome.Session.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got, want := len(session.Turns), 2; got != want {
+		t.Fatalf("session turns = %d, want %d", got, want)
 	}
 }
 

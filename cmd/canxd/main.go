@@ -103,10 +103,11 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 	}
 
 	return fmt.Sprintf(
-		"canx decision=%s reason=%s turns=%d workspace=%s docs=%d",
+		"canx decision=%s reason=%s turns=%d session=%s workspace=%s docs=%d",
 		outcome.Decision.Action,
 		outcome.Decision.Reason,
 		len(outcome.Turns),
+		outcome.Session.ID,
 		absRepoPath,
 		len(repo.Docs),
 	), nil

@@ -74,6 +74,9 @@ flowchart TD
 
 - `cmd/canxd`
   - CLI entrypoint
+- `internal/sessions`
+  - lightweight local session registry
+  - inspired by ACP persistent/oneshot sessions and Codex thread identity
 - `internal/workspace`
   - loads target repository context from `README.md`, `AGENTS.md`, and selected docs
 - `internal/tasks`
@@ -92,6 +95,13 @@ flowchart TD
 ### Design principle
 
 The repository should own orchestration, not the full agent runtime. Existing Codex surfaces remain the execution engine; `CanX` only adds control, structure, and repeatability.
+
+The session model should borrow from proven designs:
+
+- OpenClaw ACP: session identity, persistent vs oneshot mode, steer/close lifecycle
+- Codex app-server: thread and turn separation
+
+But the MVP should keep this as a thin local registry, not a full protocol stack.
 
 ## Runner strategy
 

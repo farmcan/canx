@@ -63,6 +63,7 @@ For larger projects, this makes AI-assisted development slower and less reliable
 - Testing methods: `docs/testing-methods.md`
 - Prompt templates: `docs/prompt-templates.md`
 - Collaboration room design: `docs/2026-03-19-collab-room-design.md`
+- UI observability design: `docs/2026-03-19-ui-observability-design.md`
 - Evaluation landscape: `docs/research/2026-03-18-evaluation-landscape.md`
 - Codex/OpenClaw/Ralph/ACP notes: `docs/research/2026-03-18-codex-openclaw-ralph-acp.md`
 

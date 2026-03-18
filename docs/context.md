@@ -78,15 +78,18 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 
 ## 下一步优先级
 
-根据 `docs/framework-comparison.md` 的分析：
+完整分析见 `docs/2026-03-18-framework-comparison.md`（含 LangGraph / Codex App Server / OpenClaw 深度比对）。
 
 | 优先级 | 方向 | 说明 |
 |---|---|---|
-| **P0** | AppServerRunner | 替换 `codex exec -` subprocess，接入 Codex App Server JSON-RPC。持久化 Thread，不再每轮新进程，上下文可复用。 |
-| **P1** | Turn Checkpointing | 每轮 turn 后写检查点，支持 resume，参考 LangGraph checkpointing。 |
-| **P2** | Reviewer Worker | 第二个 Runner 调用做 AI review，替换当前纯规则的 `review.Evaluate`。 |
-| **P3** | 并发 Worker | 独立 task 用 goroutine 并发调度。 |
-| **P4** | 可观测性 | structured trace log（JSON），可接入外部分析工具。 |
+| **P0** | AppServerRunner | 替换 `codex exec -` subprocess，接入 Codex App Server JSON-RPC。每轮不再新建进程，Thread 跨 turn 复用上下文。 |
+| **P1** | 角色分化上下文注入 | Planner / Worker / Reviewer 各用精简 prompt。Planner 最轻，Reviewer 只看 diff + task goal。参考 OpenClaw 最小知识原则。 |
+| **P2** | 结构化 stop payload | `[canx:stop:{"summary":"...","files_changed":[...]}]`，Engine 解析写入 session report，供下一 task 引用。 |
+| **P3** | Turn Checkpointing | 每轮写检查点，支持 resume，参考 LangGraph checkpointing。 |
+| **P4** | 错误模式持久化 | Validation 失败写入 `.canx/patterns.md`，每次 run 时加载注入 Worker prompt 头部。自改进循环。 |
+| **P5** | 并发 Worker | 先在 `Config` 加 `MaxConcurrentWorkers` / `MaxSpawnDepth` 预埋，再实现 goroutine 并发调度。 |
+| **P6** | Reviewer Worker | 第二个 Runner 调用做 AI review，替换当前纯规则的 `review.Evaluate`。 |
+| **P7** | 可观测性 | structured trace log（JSON），可接入外部分析工具。 |
 
 ---
 

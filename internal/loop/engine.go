@@ -29,11 +29,12 @@ type Engine struct {
 }
 
 type Outcome struct {
-	Session  sessions.Session
-	Tasks    []tasks.Task
-	Turns    []Turn
-	Decision Decision
-	Logs     []runlog.Entry
+	Session        sessions.Session
+	Tasks          []tasks.Task
+	Turns          []Turn
+	Decision       Decision
+	Logs           []runlog.Entry
+	PromptDocsUsed int
 }
 
 type Turn struct {
@@ -60,7 +61,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		e.Sessions = sessions.NewRegistry()
 	}
 	if e.Planner == nil {
-		e.Planner = tasks.StaticPlanner{}
+		e.Planner = tasks.SingleTaskPlanner{}
 	}
 
 	session, err := e.Sessions.Spawn(sessions.SpawnRequest{
@@ -72,7 +73,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		return Outcome{}, err
 	}
 
-	plannedTasks, err := e.Planner.Plan(cfg.Goal)
+	plannedTasks, err := e.Planner.Plan(ctx, cfg.Goal)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -88,7 +89,8 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			turnCtx, cancel = context.WithTimeout(ctx, e.TurnTimeout)
 		}
 
-		prompt := buildPrompt(cfg.Goal, repo, outcome.Tasks, outcome.Turns)
+		prompt, docsUsed := buildPrompt(cfg.Goal, repo, outcome.Tasks, outcome.Turns)
+		outcome.PromptDocsUsed = docsUsed
 		result, err := e.Runner.Run(turnCtx, codex.Request{
 			Prompt:   prompt,
 			Workdir:  e.Workdir,
@@ -146,8 +148,12 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 	return outcome, nil
 }
 
-func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task, turns []Turn) string {
+const promptDocsBudget = 4000
+const promptDocSnippetLimit = 800
+
+func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task, turns []Turn) (string, int) {
 	var builder strings.Builder
+	docsUsed := 0
 	builder.WriteString("Goal:\n")
 	builder.WriteString(goal)
 	if len(plannedTasks) > 0 {
@@ -168,13 +174,40 @@ func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task,
 		builder.WriteString("\n\nAgent rules:\n")
 		builder.WriteString(repo.Agents)
 	}
+	if len(repo.Docs) > 0 {
+		builder.WriteString("\n\nReference docs:\n")
+		usedChars := 0
+		for _, doc := range repo.Docs {
+			if usedChars >= promptDocsBudget {
+				break
+			}
+			content := strings.TrimSpace(doc.Content)
+			if content == "" {
+				continue
+			}
+			if len(content) > promptDocSnippetLimit {
+				content = content[:promptDocSnippetLimit]
+			}
+			remaining := promptDocsBudget - usedChars
+			if len(content) > remaining {
+				content = content[:remaining]
+			}
+			builder.WriteString("\n")
+			builder.WriteString(doc.Path)
+			builder.WriteString(":\n")
+			builder.WriteString(content)
+			builder.WriteString("\n")
+			usedChars += len(content)
+			docsUsed++
+		}
+	}
 	if len(turns) > 0 {
 		last := turns[len(turns)-1]
 		builder.WriteString("\n\nPrevious turn summary:\n")
 		builder.WriteString(summarizeTurn(last.Number, last.RunnerResult.Output, last.ValidationPassed))
 	}
 	builder.WriteString("\n\nRespond with progress, and include [canx:stop] when the task is complete.")
-	return builder.String()
+	return builder.String(), docsUsed
 }
 
 func updateTaskStatuses(items []tasks.Task, done bool) []tasks.Task {
@@ -184,10 +217,16 @@ func updateTaskStatuses(items []tasks.Task, done bool) []tasks.Task {
 
 	next := make([]tasks.Task, len(items))
 	copy(next, items)
-	if done {
-		next[0].Status = tasks.StatusDone
-	} else {
-		next[0].Status = tasks.StatusInProgress
+	for index, item := range next {
+		if item.Status != tasks.StatusPending && item.Status != tasks.StatusInProgress {
+			continue
+		}
+		if done {
+			next[index].Status = tasks.StatusDone
+		} else {
+			next[index].Status = tasks.StatusInProgress
+		}
+		return next
 	}
 	return next
 }

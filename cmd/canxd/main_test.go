@@ -111,6 +111,19 @@ func TestInspectSessionsListAndShow(t *testing.T) {
 	}
 }
 
+func TestInspectSessionsListReturnsEmptyWhenDirectoryMissing(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	output, err := inspectSessions(Options{RepoPath: tmp}, []string{"list"})
+	if err != nil {
+		t.Fatalf("inspectSessions(list) error = %v", err)
+	}
+	if output != "(no sessions)" {
+		t.Fatalf("output = %q", output)
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 

@@ -1,16 +1,21 @@
 package tasks
 
-import "strings"
+import (
+	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"strings"
+)
 
 type Planner interface {
-	Plan(goal string) ([]Task, error)
+	Plan(ctx context.Context, goal string) ([]Task, error)
 }
 
-type StaticPlanner struct{}
+type SingleTaskPlanner struct{}
 
-func (StaticPlanner) Plan(goal string) ([]Task, error) {
+func (SingleTaskPlanner) Plan(_ context.Context, goal string) ([]Task, error) {
 	task := Task{
-		ID:     "task-1",
+		ID:     taskID(goal),
 		Title:  titleFromGoal(goal),
 		Goal:   goal,
 		Status: StatusPending,
@@ -28,4 +33,9 @@ func titleFromGoal(goal string) string {
 		return goal
 	}
 	return goal[:40]
+}
+
+func taskID(goal string) string {
+	sum := sha1.Sum([]byte(strings.TrimSpace(goal)))
+	return "task-" + hex.EncodeToString(sum[:4])
 }

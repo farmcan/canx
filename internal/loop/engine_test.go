@@ -7,6 +7,7 @@ import (
 
 	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/sessions"
+	"github.com/farmcan/canx/internal/tasks"
 	"github.com/farmcan/canx/internal/workspace"
 )
 
@@ -24,7 +25,11 @@ func TestEngineStopsWhenValidationPasses(t *testing.T) {
 		Goal:               "ship mvp",
 		MaxTurns:           3,
 		ValidationCommands: []string{"true"},
-	}, workspace.Context{Root: ".", Readme: "readme"})
+	}, workspace.Context{
+		Root:   ".",
+		Readme: "readme",
+		Docs:   []workspace.Document{{Path: "docs/intent.md", Content: "high signal context"}},
+	})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -43,6 +48,9 @@ func TestEngineStopsWhenValidationPasses(t *testing.T) {
 	}
 	if got, want := outcome.Tasks[0].Status, "done"; got != want {
 		t.Fatalf("task status = %q, want %q", got, want)
+	}
+	if outcome.PromptDocsUsed == 0 {
+		t.Fatal("expected prompt docs to be used")
 	}
 }
 
@@ -145,6 +153,36 @@ func TestEngineWritesTurnSummariesToSession(t *testing.T) {
 	if got, want := len(session.Turns), 2; got != want {
 		t.Fatalf("session turns = %d, want %d", got, want)
 	}
+}
+
+func TestEngineUsesFirstActiveTaskNotJustIndexZero(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner:   &fakeRunner{results: []codex.Result{{Output: "done [canx:stop]"}}},
+		Workdir:  ".",
+		Planner:  fixedPlanner{tasks: []tasks.Task{{ID: "t1", Goal: "done", Status: tasks.StatusDone}, {ID: "t2", Goal: "active", Status: tasks.StatusPending}}},
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:     "ship mvp",
+		MaxTurns: 1,
+	}, workspace.Context{Root: ".", Readme: "readme", Docs: []workspace.Document{{Path: "docs/x.md", Content: "doc"}}})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if got, want := outcome.Tasks[1].Status, tasks.StatusDone; got != want {
+		t.Fatalf("second task status = %q, want %q", got, want)
+	}
+}
+
+type fixedPlanner struct {
+	tasks []tasks.Task
+}
+
+func (p fixedPlanner) Plan(_ context.Context, _ string) ([]tasks.Task, error) {
+	return p.tasks, nil
 }
 
 type fakeRunner struct {

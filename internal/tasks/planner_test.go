@@ -1,12 +1,15 @@
 package tasks
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
-func TestStaticPlannerReturnsSinglePendingTask(t *testing.T) {
+func TestSingleTaskPlannerReturnsSinglePendingTask(t *testing.T) {
 	t.Parallel()
 
-	planner := StaticPlanner{}
-	tasks, err := planner.Plan("ship canx mvp")
+	planner := SingleTaskPlanner{}
+	tasks, err := planner.Plan(context.Background(), "ship canx mvp")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -21,5 +24,8 @@ func TestStaticPlannerReturnsSinglePendingTask(t *testing.T) {
 	}
 	if task.Goal == "" {
 		t.Fatal("expected task goal")
+	}
+	if task.ID == "task-1" {
+		t.Fatal("expected non-static task id")
 	}
 }

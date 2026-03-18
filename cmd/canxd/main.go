@@ -164,6 +164,9 @@ func inspectSessions(opts Options, args []string) (string, error) {
 	if len(args) == 0 || args[0] == "list" {
 		entries, err := os.ReadDir(sessionsDir)
 		if err != nil {
+			if os.IsNotExist(err) {
+				return "(no sessions)", nil
+			}
 			return "", err
 		}
 		names := make([]string, 0, len(entries))

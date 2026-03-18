@@ -252,3 +252,53 @@ func TestServeExposesSSEEvents(t *testing.T) {
 		t.Fatalf("unexpected sse body: %s", string(body))
 	}
 }
+
+func TestRoomInstructionCreatesActionRecord(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	store := runlog.NewEventStore(root)
+	if err := store.SaveRun(runlog.RunRecord{
+		ID:       "run-1",
+		Goal:     "ship ui",
+		RepoRoot: root,
+		Status:   "running",
+		Tasks:    []tasks.Task{{ID: "task-1", Title: "Task 1", Goal: "ship ui", Status: tasks.StatusPending}},
+	}); err != nil {
+		t.Fatalf("SaveRun() error = %v", err)
+	}
+	roomStore := rooms.NewStore(root)
+	if err := roomStore.SaveRoom(rooms.Room{ID: "room-1", Title: "Main Room", RunID: "run-1", RepoRoot: root}); err != nil {
+		t.Fatalf("SaveRoom() error = %v", err)
+	}
+
+	mux, err := newServerMux(store)
+	if err != nil {
+		t.Fatalf("newServerMux() error = %v", err)
+	}
+
+	postBody := []byte(`{"participant_id":"human-1","role":"human","kind":"instruction","task_id":"task-1","body":"mark blocked"}`)
+	postReq := httptest.NewRequest("POST", "/api/rooms/room-1/messages", bytes.NewReader(postBody))
+	postResp := httptest.NewRecorder()
+	mux.ServeHTTP(postResp, postReq)
+	if postResp.Code != 200 {
+		t.Fatalf("room post status = %d body=%s", postResp.Code, postResp.Body.String())
+	}
+
+	actionReq := httptest.NewRequest("GET", "/api/runs/run-1/actions", nil)
+	actionResp := httptest.NewRecorder()
+	mux.ServeHTTP(actionResp, actionReq)
+	if actionResp.Code != 200 {
+		t.Fatalf("actions status = %d", actionResp.Code)
+	}
+	var actions []map[string]any
+	if err := json.Unmarshal(actionResp.Body.Bytes(), &actions); err != nil {
+		t.Fatalf("actions decode error = %v", err)
+	}
+	if got, want := len(actions), 1; got != want {
+		t.Fatalf("actions len = %d, want %d", got, want)
+	}
+	if actions[0]["task_id"] != "task-1" {
+		t.Fatalf("action task_id = %#v", actions[0]["task_id"])
+	}
+}

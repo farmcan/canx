@@ -47,9 +47,10 @@ async function loadRuns() {
 }
 
 async function loadRun(runID) {
-  const [run, events, context, sessions, rooms] = await Promise.all([
+  const [run, events, actions, context, sessions, rooms] = await Promise.all([
     fetchJSON(`/api/runs/${runID}`),
     fetchJSON(`/api/runs/${runID}/events`),
+    fetchJSON(`/api/runs/${runID}/actions`),
     fetchJSON('/api/context'),
     fetchJSON('/api/sessions'),
     fetchJSON('/api/rooms')
@@ -62,6 +63,7 @@ async function loadRun(runID) {
   setText('session-summary', run.session_id || '—');
   setText('task-summary', `${run.task_count} tasks`);
   document.getElementById('events').textContent = JSON.stringify(events, null, 2);
+  document.getElementById('actions').textContent = JSON.stringify(actions, null, 2);
 
   renderTasks(run);
   renderSessions(sessions, run.session_id);
@@ -205,8 +207,12 @@ function startEventStream(runID) {
   }
   currentEventSource = new EventSource(`/api/runs/${runID}/events/stream`);
   currentEventSource.onmessage = async () => {
-    const events = await fetchJSON(`/api/runs/${runID}/events`);
+    const [events, actions] = await Promise.all([
+      fetchJSON(`/api/runs/${runID}/events`),
+      fetchJSON(`/api/runs/${runID}/actions`)
+    ]);
     document.getElementById('events').textContent = JSON.stringify(events, null, 2);
+    document.getElementById('actions').textContent = JSON.stringify(actions, null, 2);
   };
   currentEventSource.onerror = () => {
     currentEventSource.close();

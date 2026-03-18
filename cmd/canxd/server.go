@@ -90,6 +90,13 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 				return
 			}
 			writeJSON(w, events)
+		case len(parts) == 2 && parts[1] == "actions":
+			actions, err := store.ListActions(runID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, actions)
 		case len(parts) == 3 && parts[1] == "events" && parts[2] == "stream":
 			events, err := store.LoadEvents(runID)
 			if err != nil {
@@ -212,6 +219,18 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 			if err != nil {
 				writeError(w, err)
 				return
+			}
+			room, err := roomStore.LoadRoom(roomID)
+			if err == nil && room.RunID != "" && message.Kind == "instruction" {
+				_ = store.AppendAction(room.RunID, runlog.ActionRecord{
+					RunID:         room.RunID,
+					RoomID:        roomID,
+					TaskID:        message.TaskID,
+					ParticipantID: message.ParticipantID,
+					Role:          message.Role,
+					Kind:          message.Kind,
+					Body:          message.Body,
+				})
 			}
 			writeJSON(w, stored)
 		default:

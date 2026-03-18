@@ -176,6 +176,27 @@ body {
   margin-bottom: 12px;
 }
 
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tree-folder {
+  border-left: 1px solid #263041;
+  padding-left: 10px;
+}
+
+.tree-folder > summary {
+  cursor: pointer;
+  color: #cbd5e1;
+  margin-bottom: 6px;
+}
+
+.tree-file {
+  margin-left: 12px;
+}
+
 .room-form {
   display: flex;
   gap: 8px;
@@ -234,6 +255,17 @@ pre {
   display: block;
   margin-bottom: 8px;
   color: #93c5fd;
+}
+
+.turn-details {
+  border-top: 1px solid #263041;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.turn-details > summary {
+  cursor: pointer;
+  color: #cbd5e1;
 }
 
 @media (max-width: 1100px) {

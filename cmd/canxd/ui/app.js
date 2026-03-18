@@ -116,8 +116,30 @@ async function renderSession(sessionID) {
     <div class="detail-card"><strong>Label</strong><div>${session.label || session.Label || ''}</div></div>
     <div class="detail-card"><strong>Runtime</strong><div>model=${runtime.model || runtime.Model || ''} sandbox=${runtime.sandbox || runtime.Sandbox || ''} approval=${runtime.approval || runtime.Approval || ''}</div></div>
     <div class="detail-card"><strong>Summary</strong><pre>${session.lastSummary || session.LastSummary || ''}</pre></div>
-    <div class="detail-card"><strong>Turns</strong><pre>${JSON.stringify(turns, null, 2)}</pre></div>
   `;
+  const turnsCard = document.createElement('div');
+  turnsCard.className = 'detail-card';
+  const title = document.createElement('strong');
+  title.textContent = 'Turns';
+  turnsCard.appendChild(title);
+  if (turns.length === 0) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No turns';
+    turnsCard.appendChild(empty);
+  } else {
+    turns.forEach((turn, index) => {
+      const details = document.createElement('details');
+      details.className = 'turn-details';
+      const summary = document.createElement('summary');
+      summary.textContent = `Turn ${index + 1}`;
+      details.appendChild(summary);
+      const pre = document.createElement('pre');
+      pre.textContent = typeof turn === 'string' ? turn : JSON.stringify(turn, null, 2);
+      details.appendChild(pre);
+      turnsCard.appendChild(details);
+    });
+  }
+  container.appendChild(turnsCard);
 }
 
 function renderSessions(reports, selectedID) {
@@ -149,7 +171,7 @@ function renderContext(context) {
   const items = [
     {label: 'README', value: context.readme || ''},
     {label: 'AGENTS', value: context.agents || ''},
-    {label: 'Docs', value: JSON.stringify(context.docs || [], null, 2)}
+    {label: 'Docs', value: 'Select a file from the tree below.'}
   ];
 
   items.forEach((item, index) => {
@@ -173,17 +195,7 @@ function renderContext(context) {
   `;
 
   const docsList = document.getElementById('docs-list');
-  docsList.innerHTML = '';
-  (context.docs || []).forEach((doc) => {
-    const button = document.createElement('button');
-    button.className = 'task-row compact';
-    button.textContent = doc.path || doc.Path;
-    button.onclick = async () => {
-      const detail = await fetchJSON(`/api/context/docs/${doc.path || doc.Path}`);
-      setText('context-detail', detail.content || '');
-    };
-    docsList.appendChild(button);
-  });
+  renderDocsTree(context.docs || [], docsList);
 }
 
 function renderRooms(rooms, runID) {
@@ -215,6 +227,53 @@ async function loadRoom(roomID) {
   currentRoom = roomID;
   const messages = await fetchJSON(`/api/rooms/${roomID}/messages`);
   document.getElementById('room-messages').textContent = JSON.stringify(messages, null, 2);
+}
+
+function renderDocsTree(docs, container) {
+  container.innerHTML = '';
+  const tree = {};
+  docs.forEach((doc) => {
+    const path = doc.path || doc.Path;
+    const parts = path.split('/');
+    let node = tree;
+    parts.forEach((part, index) => {
+      if (!node[part]) {
+        node[part] = index === parts.length - 1 ? {__file: path} : {};
+      }
+      node = node[part];
+    });
+  });
+  container.appendChild(renderTreeNode(tree));
+}
+
+function renderTreeNode(node) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'tree';
+  Object.keys(node).sort().forEach((key) => {
+    const value = node[key];
+    if (value.__file) {
+      const file = document.createElement('button');
+      file.className = 'task-row compact tree-file';
+      file.textContent = key;
+      file.onclick = async () => {
+        const detail = await fetchJSON(`/api/context/docs/${value.__file}`);
+        setText('context-detail', detail.content || '');
+      };
+      wrapper.appendChild(file);
+      return;
+    }
+    const folder = document.createElement('details');
+    folder.className = 'tree-folder';
+    if (key === 'docs') {
+      folder.open = true;
+    }
+    const summary = document.createElement('summary');
+    summary.textContent = key;
+    folder.appendChild(summary);
+    folder.appendChild(renderTreeNode(value));
+    wrapper.appendChild(folder);
+  });
+  return wrapper;
 }
 
 function startEventStream(runID) {

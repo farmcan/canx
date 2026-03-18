@@ -70,6 +70,26 @@ func TestRunIncludesWorkspaceSummaryWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestRunRejectsUnknownPlannerMode(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	writeFile(t, tmp+"/README.md", "readme")
+
+	_, err := runWithRunner(loop.Config{
+		Goal:     "ship mvp",
+		MaxTurns: 1,
+	}, Options{
+		RepoPath:    tmp,
+		PlannerMode: "unknown",
+	}, codex.NewMockRunner(codex.Result{
+		Output: "[canx:stop] done",
+	}))
+	if err == nil {
+		t.Fatal("expected planner mode error")
+	}
+}
+
 func TestInspectSessionsListAndShow(t *testing.T) {
 	t.Parallel()
 

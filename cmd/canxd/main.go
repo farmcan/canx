@@ -14,6 +14,7 @@ import (
 	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/loop"
 	"github.com/farmcan/canx/internal/runlog"
+	"github.com/farmcan/canx/internal/tasks"
 	"github.com/farmcan/canx/internal/workspace"
 )
 
@@ -32,6 +33,7 @@ type Options struct {
 	RepoPath    string
 	CodexBin    string
 	RunnerMode  string
+	PlannerMode string
 	TurnTimeout time.Duration
 	Validations []string
 }
@@ -44,6 +46,7 @@ func parseFlags() (loop.Config, Options, string, []string) {
 		repoPath = flag.String("repo", ".", "target repository path")
 		codexBin = flag.String("codex-bin", "codex", "codex binary path")
 		runner   = flag.String("runner", "exec", "runner mode: exec or mock")
+		planner  = flag.String("planner", "single", "planner mode: single or codx")
 		timeout  = flag.Duration("turn-timeout", 30*time.Second, "timeout per loop turn")
 	)
 	var validations multiFlag
@@ -60,6 +63,7 @@ func parseFlags() (loop.Config, Options, string, []string) {
 			RepoPath:    *repoPath,
 			CodexBin:    *codexBin,
 			RunnerMode:  *runner,
+			PlannerMode: *planner,
 			TurnTimeout: *timeout,
 			Validations: validations,
 		}, command, args
@@ -105,9 +109,15 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 		return "", err
 	}
 
+	planner, err := selectPlanner(opts, absRepoPath)
+	if err != nil {
+		return "", err
+	}
+
 	cfg.ValidationCommands = opts.Validations
 	engine := loop.Engine{
 		Runner:      runner,
+		Planner:     planner,
 		Workdir:     absRepoPath,
 		TurnTimeout: opts.TurnTimeout,
 	}
@@ -136,6 +146,39 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 		absRepoPath,
 		len(repo.Docs),
 	), nil
+}
+
+func selectPlanner(opts Options, workdir string) (tasks.Planner, error) {
+	switch opts.PlannerMode {
+	case "", "single":
+		return tasks.SingleTaskPlanner{}, nil
+	case "codx":
+		return tasks.CodxPlanner{
+			Runner: plannerRunnerAdapter{
+				runner:  codex.NewExecRunner(opts.CodexBin),
+				workdir: workdir,
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown planner mode: %s", opts.PlannerMode)
+	}
+}
+
+type plannerRunnerAdapter struct {
+	runner  codex.Runner
+	workdir string
+}
+
+func (a plannerRunnerAdapter) Run(ctx context.Context, prompt string) (string, error) {
+	result, err := a.runner.Run(ctx, codex.Request{
+		Prompt:   prompt,
+		Workdir:  a.workdir,
+		MaxTurns: 1,
+	})
+	if err != nil {
+		return "", err
+	}
+	return result.Output, nil
 }
 
 func dispatch(command string, cfg loop.Config, opts Options, args []string) (string, error) {

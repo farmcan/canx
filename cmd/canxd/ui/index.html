@@ -3,24 +3,66 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CanX Dashboard</title>
+  <title>CanX Control Plane</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header>
-    <h1>CanX Dashboard</h1>
-    <p>Runs, tasks, and raw event stream.</p>
+  <header class="topbar">
+    <div>
+      <h1>CanX Control Plane</h1>
+      <p>Runs, tasks, sessions, context, and event detail.</p>
+    </div>
+    <button id="refresh">Refresh</button>
   </header>
-  <main class="layout">
-    <section>
+
+  <main class="shell">
+    <aside class="panel">
       <h2>Runs</h2>
-      <ul id="runs"></ul>
-    </section>
-    <section>
-      <h2>Run Detail</h2>
-      <pre id="run-detail">Select a run.</pre>
-      <h3>Events</h3>
-      <pre id="events"></pre>
+      <div id="runs" class="run-list"></div>
+    </aside>
+
+    <section class="content">
+      <section class="panel summary-grid">
+        <div class="summary-card">
+          <div class="label">Run</div>
+          <div id="run-summary" class="value">Select a run</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Session</div>
+          <div id="session-summary" class="value">—</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Tasks</div>
+          <div id="task-summary" class="value">—</div>
+        </div>
+      </section>
+
+      <section class="two-column">
+        <section class="panel">
+          <h2>Tasks</h2>
+          <div id="tasks" class="task-list"></div>
+          <h3>Task detail</h3>
+          <pre id="task-detail">Select a task.</pre>
+        </section>
+
+        <section class="panel">
+          <h2>Session</h2>
+          <pre id="session-detail">Select a run.</pre>
+        </section>
+      </section>
+
+      <section class="two-column">
+        <section class="panel">
+          <h2>Context</h2>
+          <div id="context-tabs" class="tabs"></div>
+          <pre id="context-detail">Select a run.</pre>
+        </section>
+
+        <section class="panel">
+          <h2>Events</h2>
+          <pre id="events">Select a run.</pre>
+        </section>
+      </section>
     </section>
   </main>
   <script src="/app.js"></script>

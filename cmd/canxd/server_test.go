@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/farmcan/canx/internal/runlog"

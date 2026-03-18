@@ -119,6 +119,9 @@ go run ./cmd/canxd serve -repo .
 
 - runs 列表
 - 单次 run 的最终 task 状态
+- task detail
+- session detail
+- repo context（`README.md` / `AGENTS.md` / docs 列表）
 - 原始 event stream
 - runtime 元数据（在 turn event 里）
 

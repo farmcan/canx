@@ -49,6 +49,9 @@ go run ./cmd/canxd serve -repo .
 - `/api/runs`
 - `/api/runs/<run-id>`
 - `/api/runs/<run-id>/events`
+- `/api/runs/<run-id>/tasks/<task-id>`
+- `/api/sessions/<session-id>`
+- `/api/context`
 - `http://127.0.0.1:8090`
 
 ## 5. Real Codex experiment

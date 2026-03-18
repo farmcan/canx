@@ -121,6 +121,14 @@ go run ./cmd/canxd serve -repo .
 
 Then open `http://127.0.0.1:8090`.
 
+The dashboard currently shows:
+
+- runs with status and reason
+- task list plus task detail
+- session metadata and report detail
+- raw event stream
+- repo context (`README.md`, `AGENTS.md`, docs inventory)
+
 ## Current MVP2 shape
 
 The current local MVP now includes:

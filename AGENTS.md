@@ -21,7 +21,7 @@ Scope: this file applies to the entire `canx/` repository.
   1. `START_HERE.md`
   2. `README.md`
   3. `AGENTS.md` (this file)
-  4. `docs/context.md`
+  4. `docs/ai-agent-context.md`
   5. `docs/runbook.md`
 - Optional background:
   - `docs/framework-comparison.md`: external framework analysis and evolution roadmap
@@ -55,4 +55,4 @@ Scope: this file applies to the entire `canx/` repository.
 
 - Keep rationale in `docs/`.
 - When external tools or projects influence design, add findings to `docs/framework-comparison.md`.
-- When changing architecture direction, update `docs/context.md` together with the code change.
+- When changing architecture direction, update `docs/ai-agent-context.md` together with the code change.

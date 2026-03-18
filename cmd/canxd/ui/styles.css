@@ -104,6 +104,16 @@ body {
   padding: 12px;
 }
 
+.task-row.compact {
+  padding: 8px 10px;
+}
+
+.task-row.selected,
+.run-card.selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb inset;
+}
+
 #refresh,
 .tab {
   padding: 8px 12px;
@@ -158,6 +168,36 @@ body {
   gap: 8px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+}
+
+.compact-list {
+  max-height: 180px;
+  overflow: auto;
+  margin-bottom: 12px;
+}
+
+.room-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.room-form input {
+  flex: 1;
+  background: #0f172a;
+  color: #e5e7eb;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.room-form button {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  background: #1d4ed8;
+  color: white;
+  cursor: pointer;
 }
 
 .tab.active {

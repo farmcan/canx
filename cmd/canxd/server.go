@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/farmcan/canx/internal/rooms"
 	"github.com/farmcan/canx/internal/runlog"
 	"github.com/farmcan/canx/internal/tasks"
 	"github.com/farmcan/canx/internal/workspace"
@@ -40,6 +41,7 @@ func serve(opts Options) (string, error) {
 }
 
 func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
+	roomStore := rooms.NewStore(store.Root)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/runs", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/runs" {
@@ -111,6 +113,14 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 		}
 		writeJSON(w, report)
 	})
+	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
+		reports, err := listSessionReports(store.Root)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, reports)
+	})
 	mux.HandleFunc("/api/context", func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := workspace.Load(store.Root)
 		if err != nil {
@@ -124,6 +134,73 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 			"docs":   ctx.Docs,
 		})
 	})
+	mux.HandleFunc("/api/context/docs/", func(w http.ResponseWriter, r *http.Request) {
+		relPath := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/context/docs/"), "/")
+		if relPath == "" {
+			http.NotFound(w, r)
+			return
+		}
+		data, err := os.ReadFile(filepath.Join(store.Root, relPath))
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{
+			"path":    relPath,
+			"content": string(data),
+		})
+	})
+	mux.HandleFunc("/api/rooms", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/rooms" {
+			http.NotFound(w, r)
+			return
+		}
+		items, err := roomStore.ListRooms()
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, items)
+	})
+	mux.HandleFunc("/api/rooms/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/rooms/")
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) == 0 || parts[0] == "" {
+			http.NotFound(w, r)
+			return
+		}
+		roomID := parts[0]
+		switch {
+		case len(parts) == 1:
+			room, err := roomStore.LoadRoom(roomID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, room)
+		case len(parts) == 2 && parts[1] == "messages" && r.Method == http.MethodGet:
+			messages, err := roomStore.ListMessages(roomID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, messages)
+		case len(parts) == 2 && parts[1] == "messages" && r.Method == http.MethodPost:
+			var message rooms.Message
+			if err := json.NewDecoder(r.Body).Decode(&message); err != nil {
+				writeError(w, err)
+				return
+			}
+			stored, err := roomStore.AppendMessage(roomID, message)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, stored)
+		default:
+			http.NotFound(w, r)
+		}
+	})
 
 	staticRoot, err := fs.Sub(uiFiles, "ui")
 	if err != nil {
@@ -131,6 +208,33 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 	}
 	mux.Handle("/", http.FileServer(http.FS(staticRoot)))
 	return mux, nil
+}
+
+func listSessionReports(root string) ([]runlog.SessionReport, error) {
+	dir := filepath.Join(root, ".canx", "sessions")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var reports []runlog.SessionReport
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		var report runlog.SessionReport
+		if err := json.Unmarshal(data, &report); err != nil {
+			return nil, err
+		}
+		reports = append(reports, report)
+	}
+	return reports, nil
 }
 
 func findTask(items []tasks.Task, taskID string) (tasks.Task, bool) {

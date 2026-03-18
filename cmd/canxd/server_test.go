@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/farmcan/canx/internal/rooms"
 	"github.com/farmcan/canx/internal/runlog"
 	"github.com/farmcan/canx/internal/sessions"
 	"github.com/farmcan/canx/internal/tasks"
@@ -123,5 +125,94 @@ func TestServeExposesTaskSessionAndContextAPI(t *testing.T) {
 	}
 	if contextPayload["readme"] == "" {
 		t.Fatal("expected readme in context payload")
+	}
+
+	sessionsReq := httptest.NewRequest("GET", "/api/sessions", nil)
+	sessionsResp := httptest.NewRecorder()
+	mux.ServeHTTP(sessionsResp, sessionsReq)
+	if sessionsResp.Code != 200 {
+		t.Fatalf("sessions status = %d", sessionsResp.Code)
+	}
+	var sessionReports []runlog.SessionReport
+	if err := json.Unmarshal(sessionsResp.Body.Bytes(), &sessionReports); err != nil {
+		t.Fatalf("sessions decode error = %v", err)
+	}
+	if got, want := len(sessionReports), 1; got != want {
+		t.Fatalf("sessions len = %d, want %d", got, want)
+	}
+
+	docReq := httptest.NewRequest("GET", "/api/context/docs/docs/one.md", nil)
+	docResp := httptest.NewRecorder()
+	mux.ServeHTTP(docResp, docReq)
+	if docResp.Code != 200 {
+		t.Fatalf("doc status = %d", docResp.Code)
+	}
+	var docPayload map[string]any
+	if err := json.Unmarshal(docResp.Body.Bytes(), &docPayload); err != nil {
+		t.Fatalf("doc decode error = %v", err)
+	}
+	if docPayload["content"] != "doc one" {
+		t.Fatalf("doc content = %#v", docPayload["content"])
+	}
+}
+
+func TestServeExposesRoomsAPI(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "README.md"), "readme body")
+	store := runlog.NewEventStore(root)
+	roomStore := rooms.NewStore(root)
+	if err := roomStore.SaveRoom(rooms.Room{
+		ID:       "room-1",
+		Title:    "Main Room",
+		RunID:    "run-1",
+		RepoRoot: root,
+	}); err != nil {
+		t.Fatalf("SaveRoom() error = %v", err)
+	}
+
+	mux, err := newServerMux(store)
+	if err != nil {
+		t.Fatalf("newServerMux() error = %v", err)
+	}
+
+	listReq := httptest.NewRequest("GET", "/api/rooms", nil)
+	listResp := httptest.NewRecorder()
+	mux.ServeHTTP(listResp, listReq)
+	if listResp.Code != 200 {
+		t.Fatalf("rooms status = %d", listResp.Code)
+	}
+	var roomList []rooms.Room
+	if err := json.Unmarshal(listResp.Body.Bytes(), &roomList); err != nil {
+		t.Fatalf("rooms decode error = %v", err)
+	}
+	if got, want := len(roomList), 1; got != want {
+		t.Fatalf("rooms len = %d, want %d", got, want)
+	}
+
+	postBody := []byte(`{"participant_id":"human-1","role":"human","kind":"instruction","body":"adjust strategy"}`)
+	postReq := httptest.NewRequest("POST", "/api/rooms/room-1/messages", bytes.NewReader(postBody))
+	postResp := httptest.NewRecorder()
+	mux.ServeHTTP(postResp, postReq)
+	if postResp.Code != 200 {
+		t.Fatalf("room post status = %d body=%s", postResp.Code, postResp.Body.String())
+	}
+
+	msgReq := httptest.NewRequest("GET", "/api/rooms/room-1/messages", nil)
+	msgResp := httptest.NewRecorder()
+	mux.ServeHTTP(msgResp, msgReq)
+	if msgResp.Code != 200 {
+		t.Fatalf("room messages status = %d", msgResp.Code)
+	}
+	var messages []rooms.Message
+	if err := json.Unmarshal(msgResp.Body.Bytes(), &messages); err != nil {
+		t.Fatalf("messages decode error = %v", err)
+	}
+	if got, want := len(messages), 1; got != want {
+		t.Fatalf("messages len = %d, want %d", got, want)
+	}
+	if messages[0].Body != "adjust strategy" {
+		t.Fatalf("message body = %q", messages[0].Body)
 	}
 }

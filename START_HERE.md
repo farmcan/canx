@@ -60,7 +60,7 @@ go run ./cmd/canxd \
 |---|---|
 | `README.md` | 模块结构、构建方式 |
 | `AGENTS.md` | 工程规则（必须遵守） |
-| `docs/context.md` | 项目全局：架构图、当前状态、下一步优先级 |
+| `docs/ai-agent-context.md` | 项目全局：架构图、当前状态、下一步优先级 |
 | `docs/runbook.md` | 所有验证过的可运行命令 |
 
 ### 可选（背景分析）
@@ -76,7 +76,7 @@ go run ./cmd/canxd \
 
 **AppServerRunner（P0）**：接入 Codex App Server JSON-RPC，替换当前 `codex exec -` subprocess 模式。每轮不再 fork 新进程，Thread 可跨 turn 复用上下文。
 
-详见 `docs/context.md` → "下一步优先级" 和 `docs/framework-comparison.md` → "4.1 接入 Codex App Server"。
+详见 `docs/ai-agent-context.md` → "下一步优先级" 和 `docs/framework-comparison.md` → "4.1 接入 Codex App Server"。
 
 ---
 

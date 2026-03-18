@@ -1,5 +1,6 @@
 let currentRun = null;
 let currentContext = null;
+let currentRoom = null;
 
 async function fetchJSON(path) {
   const response = await fetch(path);
@@ -44,10 +45,12 @@ async function loadRuns() {
 }
 
 async function loadRun(runID) {
-  const [run, events, context] = await Promise.all([
+  const [run, events, context, sessions, rooms] = await Promise.all([
     fetchJSON(`/api/runs/${runID}`),
     fetchJSON(`/api/runs/${runID}/events`),
-    fetchJSON('/api/context')
+    fetchJSON('/api/context'),
+    fetchJSON('/api/sessions'),
+    fetchJSON('/api/rooms')
   ]);
 
   currentRun = run;
@@ -59,8 +62,10 @@ async function loadRun(runID) {
   document.getElementById('events').textContent = JSON.stringify(events, null, 2);
 
   renderTasks(run);
+  renderSessions(sessions, run.session_id);
   await renderSession(run.session_id);
   renderContext(context);
+  renderRooms(rooms, run.id);
 }
 
 function renderTasks(run) {
@@ -98,6 +103,28 @@ async function renderSession(sessionID) {
   document.getElementById('session-detail').textContent = JSON.stringify(report, null, 2);
 }
 
+function renderSessions(reports, selectedID) {
+  const container = document.getElementById('sessions');
+  container.innerHTML = '';
+  reports.forEach((report) => {
+    const session = report.session || report.Session;
+    const row = document.createElement('button');
+    row.className = 'task-row';
+    row.innerHTML = `
+      <div class="task-row-head">
+        <strong>${session.id || session.ID}</strong>
+        ${statusBadge(report.decision || report.Decision)}
+      </div>
+      <div class="run-reason">${session.label || session.Label || ''}</div>
+    `;
+    row.onclick = () => renderSession(session.id || session.ID);
+    if ((session.id || session.ID) === selectedID) {
+      row.classList.add('selected');
+    }
+    container.appendChild(row);
+  });
+}
+
 function renderContext(context) {
   const tabs = document.getElementById('context-tabs');
   tabs.innerHTML = '';
@@ -121,6 +148,50 @@ function renderContext(context) {
   });
 
   setText('context-detail', items[0].value);
+
+  const docsList = document.getElementById('docs-list');
+  docsList.innerHTML = '';
+  (context.docs || []).forEach((doc) => {
+    const button = document.createElement('button');
+    button.className = 'task-row compact';
+    button.textContent = doc.path || doc.Path;
+    button.onclick = async () => {
+      const detail = await fetchJSON(`/api/context/docs/${doc.path || doc.Path}`);
+      setText('context-detail', detail.content || '');
+    };
+    docsList.appendChild(button);
+  });
+}
+
+function renderRooms(rooms, runID) {
+  const container = document.getElementById('rooms');
+  container.innerHTML = '';
+  const filtered = rooms.filter((room) => !runID || room.run_id === runID || room.run_id === '');
+  filtered.forEach((room) => {
+    const button = document.createElement('button');
+    button.className = 'task-row';
+    button.innerHTML = `
+      <div class="task-row-head">
+        <strong>${room.title}</strong>
+        <span class="run-meta">${room.id}</span>
+      </div>
+      <div class="run-reason">${room.run_id || ''}</div>
+    `;
+    button.onclick = () => loadRoom(room.id);
+    container.appendChild(button);
+  });
+  if (filtered.length > 0) {
+    loadRoom(filtered[0].id);
+  } else {
+    document.getElementById('room-messages').textContent = 'No rooms yet.';
+    currentRoom = null;
+  }
+}
+
+async function loadRoom(roomID) {
+  currentRoom = roomID;
+  const messages = await fetchJSON(`/api/rooms/${roomID}/messages`);
+  document.getElementById('room-messages').textContent = JSON.stringify(messages, null, 2);
 }
 
 document.getElementById('refresh').onclick = () => {
@@ -128,6 +199,30 @@ document.getElementById('refresh').onclick = () => {
   loadRuns().catch((error) => {
     setText('events', String(error));
   });
+};
+
+document.getElementById('room-form').onsubmit = async (event) => {
+  event.preventDefault();
+  if (!currentRoom) {
+    return;
+  }
+  const input = document.getElementById('room-message');
+  const body = input.value.trim();
+  if (!body) {
+    return;
+  }
+  await fetch(`/api/rooms/${currentRoom}/messages`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      participant_id: 'human-local',
+      role: 'human',
+      kind: 'instruction',
+      body
+    })
+  });
+  input.value = '';
+  await loadRoom(currentRoom);
 };
 
 loadRuns().catch((error) => {

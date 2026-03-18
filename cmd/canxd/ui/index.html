@@ -46,7 +46,9 @@
         </section>
 
         <section class="panel">
-          <h2>Session</h2>
+          <h2>Sessions</h2>
+          <div id="sessions" class="task-list"></div>
+          <h3>Session detail</h3>
           <pre id="session-detail">Select a run.</pre>
         </section>
       </section>
@@ -55,12 +57,28 @@
         <section class="panel">
           <h2>Context</h2>
           <div id="context-tabs" class="tabs"></div>
+          <div id="docs-list" class="task-list compact-list"></div>
           <pre id="context-detail">Select a run.</pre>
         </section>
 
         <section class="panel">
           <h2>Events</h2>
           <pre id="events">Select a run.</pre>
+        </section>
+      </section>
+
+      <section class="two-column">
+        <section class="panel">
+          <h2>Rooms</h2>
+          <div id="rooms" class="task-list"></div>
+        </section>
+        <section class="panel">
+          <h2>Messages</h2>
+          <form id="room-form" class="room-form">
+            <input id="room-message" type="text" placeholder="e.g. adjust strategy, add reviewer note">
+            <button type="submit">Post</button>
+          </form>
+          <pre id="room-messages">Select a room.</pre>
         </section>
       </section>
     </section>

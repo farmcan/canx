@@ -13,6 +13,7 @@ import (
 
 	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/loop"
+	"github.com/farmcan/canx/internal/rooms"
 	"github.com/farmcan/canx/internal/runlog"
 	"github.com/farmcan/canx/internal/tasks"
 	"github.com/farmcan/canx/internal/workspace"
@@ -118,6 +119,7 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 
 	cfg.ValidationCommands = opts.Validations
 	eventStore := runlog.NewEventStore(absRepoPath)
+	roomStore := rooms.NewStore(absRepoPath)
 	runID := runlog.NewRunID()
 	initialRun := runlog.RunRecord{
 		ID:        runID,
@@ -127,6 +129,14 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 		StartedAt: time.Now(),
 	}
 	if err := eventStore.SaveRun(initialRun); err != nil {
+		return "", err
+	}
+	if err := roomStore.SaveRoom(rooms.Room{
+		ID:       "room-" + runID,
+		Title:    "Main Room",
+		RunID:    runID,
+		RepoRoot: absRepoPath,
+	}); err != nil {
 		return "", err
 	}
 	if err := eventStore.AppendEvent(runID, runlog.Event{

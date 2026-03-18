@@ -25,6 +25,12 @@ For larger projects, this makes AI-assisted development slower and less reliable
 
 `CanX` exists to turn AI development into an AI-to-AI delivery pipeline where humans define goals and approve important decisions, while agents handle the main execution loop.
 
+## In one line
+
+- automatically reads the repository context
+- still needs a clear goal prompt from you
+- works best today for small, practical, fast-iteration development loops
+
 ## Non-goals
 
 - not a replacement for Codex itself

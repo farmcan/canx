@@ -7,11 +7,18 @@ import (
 )
 
 type ExecRunner struct {
-	bin string
+	bin              string
+	skipGitRepoCheck bool
 }
 
 func NewExecRunner(bin string) ExecRunner {
 	return ExecRunner{bin: bin}
+}
+
+// NewExecRunnerInDir creates an ExecRunner with the git-repo check evaluated
+// once at construction time, avoiding a subprocess on every Run call.
+func NewExecRunnerInDir(bin, workdir string) ExecRunner {
+	return ExecRunner{bin: bin, skipGitRepoCheck: shouldSkipGitRepoCheck(workdir)}
 }
 
 func (r ExecRunner) Run(ctx context.Context, req Request) (Result, error) {
@@ -20,7 +27,7 @@ func (r ExecRunner) Run(ctx context.Context, req Request) (Result, error) {
 	}
 
 	args := []string{"exec", "-"}
-	if shouldSkipGitRepoCheck(req.Workdir) {
+	if r.skipGitRepoCheck || shouldSkipGitRepoCheck(req.Workdir) {
 		args = append(args, "--skip-git-repo-check")
 	}
 	cmd := exec.CommandContext(ctx, r.bin, args...)

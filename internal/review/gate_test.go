@@ -11,13 +11,10 @@ func TestGateRejectsMissingValidation(t *testing.T) {
 	}
 }
 
-func TestGateApprovesValidatedScopedResult(t *testing.T) {
+func TestGateApprovesValidatedResult(t *testing.T) {
 	t.Parallel()
 
-	result := Evaluate(Result{
-		Validated: true,
-		InScope:   true,
-	})
+	result := Evaluate(Result{Validated: true})
 	if !result.Approved {
 		t.Fatal("expected review approval")
 	}

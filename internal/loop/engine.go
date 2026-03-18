@@ -123,7 +123,6 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		cancel()
 		reviewResult := review.Evaluate(review.Result{
 			Validated: validationPassed,
-			InScope:   true,
 		})
 
 		outcome.Turns = append(outcome.Turns, Turn{
@@ -149,6 +148,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 
 		switch {
 		case strings.Contains(result.Output, escalateMarker):
+			outcome.Tasks = blockActiveTask(outcome.Tasks, activeIndex)
 			session, _ = e.Sessions.Close(session.ID)
 			outcome.Session = session
 			outcome.Decision = Decision{Action: ActionEscalate, Reason: "worker requested escalation"}
@@ -172,6 +172,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		}
 	}
 
+	outcome.Tasks = blockActiveTask(outcome.Tasks, firstActiveTaskIndex(outcome.Tasks))
 	session, _ = e.Sessions.Close(session.ID)
 	outcome.Session = session
 	outcome.Decision = Decision{Action: ActionEscalate, Reason: "max turns reached"}
@@ -351,6 +352,16 @@ func truncateUTF8(input string, limit int) string {
 		runes = index
 	}
 	return input[:runes]
+}
+
+func blockActiveTask(items []tasks.Task, activeIndex int) []tasks.Task {
+	if len(items) == 0 || activeIndex < 0 || activeIndex >= len(items) {
+		return items
+	}
+	next := make([]tasks.Task, len(items))
+	copy(next, items)
+	next[activeIndex].Status = tasks.StatusBlocked
+	return next
 }
 
 func firstActiveTaskIndex(items []tasks.Task) int {

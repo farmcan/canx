@@ -36,19 +36,15 @@ func TestCodxPlannerParsesJSONOutput(t *testing.T) {
 	}
 }
 
-func TestCodxPlannerFallsBackOnInvalidJSON(t *testing.T) {
+func TestCodxPlannerReturnsErrorOnInvalidJSON(t *testing.T) {
 	t.Parallel()
 
 	runner := fakePlannerRunner{output: "I'll create two tasks: first add a test, then implement"}
 
 	planner := CodxPlanner{Runner: runner}
-	items, err := planner.Plan(context.Background(), "implement feature X")
-	if err != nil {
-		t.Fatalf("Plan() error = %v", err)
-	}
-
-	if got, want := len(items), 1; got != want {
-		t.Fatalf("Plan() fallback len = %d, want %d", got, want)
+	_, err := planner.Plan(context.Background(), "implement feature X")
+	if err == nil {
+		t.Fatal("expected error when planner output is not valid JSON")
 	}
 }
 

@@ -112,6 +112,8 @@ func TestAgenticRealExecSmokeIfEnabled(t *testing.T) {
 	}
 }
 
+const plannerRealTimeout = 60 * time.Second
+
 func TestPlannerRealSmokeIfEnabled(t *testing.T) {
 	if os.Getenv("CANX_EVAL_REAL") != "1" {
 		t.Skip("set CANX_EVAL_REAL=1 to run real codex planner eval")
@@ -129,7 +131,9 @@ func TestPlannerRealSmokeIfEnabled(t *testing.T) {
 
 	multiTaskCount := 0
 	for _, goal := range goals {
-		items, err := planner.Plan(context.Background(), goal)
+		ctx, cancel := context.WithTimeout(context.Background(), plannerRealTimeout)
+		items, err := planner.Plan(ctx, goal)
+		cancel()
 		if err != nil {
 			t.Fatalf("Plan(%q) error = %v", goal, err)
 		}

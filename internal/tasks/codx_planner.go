@@ -3,8 +3,11 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 )
+
+var ErrPlannerNoTasks = errors.New("planner returned no tasks")
 
 type PlannerRunner interface {
 	Run(ctx context.Context, prompt string) (string, error)
@@ -32,9 +35,9 @@ func (p CodxPlanner) Plan(ctx context.Context, goal string) ([]Task, error) {
 		return nil, err
 	}
 
-	items, err := parsePlanJSON(output)
-	if err != nil || len(items) == 0 {
-		return SingleTaskPlanner{}.Plan(ctx, goal)
+	items, parseErr := parsePlanJSON(output)
+	if parseErr != nil || len(items) == 0 {
+		return nil, ErrPlannerNoTasks
 	}
 	for index := range items {
 		if items[index].ID == "" {

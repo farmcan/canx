@@ -1,213 +1,181 @@
 # CanX MVP Code Review
 
 **第一版：** 2026-03-18（初始骨架）
-**本版：** 2026-03-18（第二轮，反映当前代码状态）
-**范围：** 全仓库，对照 `docs/2026-03-18-product-intent.md` 和 `docs/2026-03-17-canx-mvp-design.md`
-**测试状态：** `go test ./...` 全部通过
+**第二版：** 2026-03-18（Planner + 持久化）
+**第三版：** 2026-03-18（多任务 + eval suite + ExecRunner）
+**本版（第四版）：** 2026-03-19（eval report + parsePlanJSON 改进 + escalate marker）
+**范围：** 全仓库，HEAD `e4df041`
+**测试状态：** `go test ./...` 全部通过（11 包）
 
 ---
 
-## 第一轮修复进度
-
-第一轮发现的问题大多已在后续提交中修复，具体如下：
+## 第三轮修复进度
 
 | 问题 | 状态 |
 |---|---|
-| `tasks` 包是孤岛，未接入 Engine | ✅ 已修复：加了 `Planner` 接口，Engine 调用 `Planner.Plan()` |
-| 没有总时间预算 | ✅ 已修复：`Config.BudgetSeconds` + Engine 的 `context.WithTimeout` |
-| `workspace.Load` 强制要求 AGENTS.md | ✅ 已修复：改为 `os.IsNotExist` 容错 |
-| runlog 不持久化 | ✅ 已修复：`store.go` 写入 `.canx/sessions/<id>.json` |
-| `runValidation` 硬编码 `zsh -lc` | ✅ 已修复：改为 `sh -c` |
-| `main()` 用 `panic` | ✅ 已修复：改为 `fmt.Fprintf(os.Stderr)` + `os.Exit(1)` |
-| `buildPrompt` 塞原始输出 | ✅ 已修复：改为 `summarizeTurn` 摘要 |
-| `canxd` binary 被 git 追踪 | ✅ 已修复：`.gitignore` 加了 `/canxd` 和 `/.canx/` |
-| Session 无时间戳 | ✅ 已修复：加了 `CreatedAt`、`UpdatedAt`、`LastSummary` |
-| CLI 无 session 查看命令 | ✅ 新增：`canxd sessions list` / `canxd sessions show <id>` |
+| `summarizeTurn` output 无截断 | ✅ 已修复：1000 字符上限，加 `...(truncated)` |
+| `[canx:escalate]` marker 未实现 | ✅ 已实现：Engine switch 里处理，提前退出 |
+| 非零退出码 + stop marker 导致崩溃 | ✅ 已修复：先检查 marker 再决定是否返回 error |
+| `parsePlanJSON` 只找第一个 `[...]` | ✅ 已改进：`allIndexes` 穷举所有组合，取最后有效的 JSON 数组 |
+| `review.InScope` 硬编码 `true` | ❌ **第五次出现，未修** |
+| `go.mod go 1.25.0` | ❌ **第五次出现，未修** |
+| `sessions.Registry` 无并发保护 | ❌ 持续存在 |
 
 ---
 
-## 当前状态评估
+## 更正上一版
 
-代码整体质量明显提升。任务模型已接入运行路径，持久化已实现，CLI 变成了一个真正可用的工具。以下是当前仍然存在的问题。
+**第三版 review 中对 `truncateUTF8` 的 Bug 判断是错误的。**
 
----
+我之前声称「函数会丢弃最后一个 rune」，经过本轮仔细验证，该函数逻辑是正确的：
 
-## 重要问题
+- `runes = index` 记录的是「当前 rune 的字节起始位置」
+- 当 `index > limit` 触发提前返回时，`input[:runes]` 正确截断到前一个 rune 的结束
+- 当循环正常结束（所有 rune 起始都 ≤ limit）时，`input[:runes]` 丢弃最后一个 rune——这是正确行为，因为该 rune 从 `runes` 处开始但其结束超过了 limit
 
-### 1. `StaticPlanner` 命名误导，且有 ID 碰撞风险
-
-`StaticPlanner.Plan()` 总是把整个 goal 包装成一个 task，ID 固定为 `"task-1"`：
-
-```go
-func (StaticPlanner) Plan(goal string) ([]Task, error) {
-    task := Task{
-        ID:     "task-1",
-        // ...
-    }
-    return []Task{task}, nil
-}
-```
-
-两个问题：
-1. **命名**：`StaticPlanner` 这个名字暗示"配置静态的"，而不是"永远只产生一个 task"。更准确的名字是 `SingleTaskPlanner` 或 `IdentityPlanner`。
-2. **ID 固定**：如果将来有多个并发 Engine 实例，或者 Planner 被复用，`"task-1"` 会冲突。ID 应该基于 goal 做 hash，或者引入一个 ID 生成器。
+现有 `TestBuildPromptKeepsUTF8ValidWhenTruncatingDocs` 验证了 UTF-8 有效性，函数实现是正确的。
 
 ---
 
-### 2. `updateTaskStatuses` 只更新第一个 task
+## 当前问题
 
-```go
-func updateTaskStatuses(items []tasks.Task, done bool) []tasks.Task {
-    // ...
-    if done {
-        next[0].Status = tasks.StatusDone
-    } else {
-        next[0].Status = tasks.StatusInProgress
-    }
-    return next
-}
-```
+### 重要
 
-当前 `StaticPlanner` 只返回一个 task，所以没问题。但这个函数是为多 task 场景设计的（接受 `[]Task`），却只更新 `index 0`。一旦 `Planner` 返回多个任务，这里会静默地忽略其他任务。
-
-**建议：** 要么明确注释"只跟踪第一个活跃任务"，要么改为按状态查找第一个 `pending/in_progress` 的 task 来更新，而不是硬用 `[0]`。
-
----
-
-### 3. `Planner` 接口缺少 `context.Context`
-
-```go
-type Planner interface {
-    Plan(goal string) ([]Task, error)
-}
-```
-
-未来的 `CodxPlanner`（调用 Codex 生成任务列表）需要能够响应超时和取消。现在的接口签名不支持这个。
-
-**建议：** 改为 `Plan(ctx context.Context, goal string) ([]Task, error)`。这是一个破坏性变更，越早做代价越低。
-
----
-
-### 4. `buildPrompt` 加载了 `repo.Docs` 但从不使用
-
-`workspace.Load` 收集了 `docs/` 下所有 Markdown 文档，存在 `repo.Docs []Document` 里，但 `buildPrompt` 完全忽略了它：
-
-```go
-func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task, turns []Turn) string {
-    // ...
-    builder.WriteString(repo.Readme)  // 用了
-    builder.WriteString(repo.Agents) // 用了
-    // repo.Docs 从未出现在这里
-}
-```
-
-设计文档明确要求工作区加载包括"a small number of high-signal docs under docs/"，目的是让 worker 理解项目背景。现在这些 docs 白加载了，worker 看不到它们。
-
-**建议：** 在 `buildPrompt` 里加入 docs 注入，同时建议加 token 预算截断（不是所有 docs 都要注入，有些 target repo 的 docs/ 可能很大）。
-
----
-
-### 5. `review.Evaluate` 的 `InScope` 仍然硬编码为 `true`
+#### 1. `review.InScope` 硬编码 `true`（第五轮仍未修）
 
 ```go
 reviewResult := review.Evaluate(review.Result{
     Validated: validationPassed,
-    InScope:   true,  // 永远 true
+    InScope:   true,   // 永远 true
 })
 ```
 
-这个问题从第一轮开始就存在，仍未修复。`review.Result.InScope` 字段的存在暗示有 scope 检查逻辑，但实际上 `Evaluate` 对 InScope 的判断毫无意义，因为调用方永远传 `true`。
-
-**建议：** 二选一：要么实现真实的 scope 检查（比较 `cfg.FilesInScope` 和 runner 实际修改的文件），要么把 `InScope` 从 `Result` 里删掉，直到真正需要时再加回来。
+`review.Result` 有 4 个字段，其中 `InScope` 和 `Approved` 都应该是计算结果，但 `InScope` 被静态传入，导致 `Evaluate` 中的 scope 分支永远不会触发。这个字段已经在五轮 review 里出现。它要么应该被删掉，要么应该有实际计算逻辑。
 
 ---
 
-## 中等问题
-
-### 6. `canxd sessions list` 目录不存在时报错
+#### 2. `CodxPlanner.Plan` 在 runner 报错时静默 fallback
 
 ```go
-entries, err := os.ReadDir(sessionsDir)
+output, err := p.Runner.Run(ctx, plannerPrompt+goal)
 if err != nil {
-    return "", err
+    return nil, err  // ← 这是正确的，会传播 error
+}
+items, err := parsePlanJSON(output)
+if err != nil || len(items) == 0 {
+    return SingleTaskPlanner{}.Plan(ctx, goal)  // ← 这里静默 fallback
 }
 ```
 
-用户第一次运行 `canxd sessions list`（还没有跑过任何 run）时，`.canx/sessions` 不存在，命令会返回错误而不是空列表。
-
-**建议：** 用 `os.IsNotExist` 判断，目录不存在时直接返回空字符串或 `"(no sessions)"`。
+前半段（runner 报错）会传播错误，是正确的。但后半段（JSON 解析失败）静默退化到单任务规划器，没有任何日志或信号。如果 Codex 返回了非 JSON 格式的长文本（比如 Codex 输出了代码而不是 JSON），调用方无法区分「规划成功」和「规划失败后降级」。在多任务场景下，这意味着原本应该分解成 5 个任务的工作可能被当作 1 个任务执行，且没有任何警告。
 
 ---
 
-### 7. `sessions.Registry.List()` 与 CLI 的 sessions 路径不一致
+#### 3. Escalate 时 active task 被留在 `in_progress` 状态
 
-`sessions.Registry` 有一个 `List()` 方法，但 `inspectSessions` 函数绕过了 Registry，直接用 `os.ReadDir` 读磁盘文件。这意味着：
+```go
+taskDone := reviewResult.Approved || strings.Contains(result.Output, stopMarker)
+outcome.Tasks = updateTaskStatuses(outcome.Tasks, activeIndex, taskDone)
 
-- Registry.List() 只能列出当前进程内存中的会话（这个进程跑完就消失了）
-- CLI 的 `sessions list` 从磁盘读历史记录
+switch {
+case strings.Contains(result.Output, escalateMarker):
+    // 直接返回，但 taskDone=false → active task 已被标为 in_progress
+    session, _ = e.Sessions.Close(session.ID)
+    outcome.Decision = Decision{Action: ActionEscalate, ...}
+    return outcome, nil
+```
 
-两套 "list" 的语义不同，容易让后来的开发者误用 `Registry.List()`。
-
-**建议：** 考虑把 `Registry.List()` 删掉或标注为"仅用于测试"，因为持久化的历史 sessions 只能从磁盘读取。
-
----
-
-### 8. `sessions.Registry` 仍然没有并发保护
-
-`Registry.sessions` 是无锁的 `map`。当前引擎是单 goroutine 顺序执行，不会触发 race。但 Engine.Run 被多 goroutine 并发调用时（比如将来的并发 worker 场景），同一个 Registry 实例会产生数据竞争。
-
-**建议：** 加 `sync.RWMutex`，或者在 `Registry` 的 godoc 里明确注明"非并发安全，每个 Engine.Run 调用应传入独立 Registry 实例"。
+worker 输出 `[canx:escalate]` 时，`taskDone = false`（output 不含 stopMarker，validation 也没 pass），所以 `updateTaskStatuses` 把该任务标为 `in_progress`。然后立刻 return。结果：session report 里 active task 的 status 是 `in_progress`，而不是 `blocked` 或 `escalated`。消费 session report 的工具无法区分「任务在进行中」和「任务因人工介入需求而中止」。
 
 ---
 
-### 9. `go.mod` 声明 `go 1.25.0`，版本尚不存在
+#### 4. `TestPlannerRealSmokeIfEnabled` 导致 `make report-real` 失败
 
-截至 2026-03，最新发布版为 1.24.x，`go 1.25.0` 尚未正式发布。
+实测（上次运行记录）：该测试在第二个 goal 时会让 Codex 进入真实代码执行模式而挂起，最终 timeout。`cmd/canx-eval-report` 在 `report-real` 模式下会运行 `TestPlannerRealSmokeIfEnabled`，导致整个 `make report-real` 命令失败。
 
-**建议：** 改为 `go 1.24`。
+直接影响：`make report-real` 目前不可用。
 
----
-
-## 小问题
-
-- **`ExecRunner` 传 prompt 作为位置参数**：`exec.CommandContext(ctx, r.bin, "exec", req.Prompt)` 把整个 prompt 字符串作为第三个 CLI 参数。Codex CLI 的 `codex exec` 实际接口需要验证——长 prompt（含换行符）作为 shell 参数可能有问题。考虑改为 stdin 或临时文件。
-
-- **`Request.MaxTurns` 未被 `ExecRunner` 使用**：`codex.Request.MaxTurns` 字段存在，Engine 传了 `MaxTurns: 1`，但 ExecRunner 构建的命令行根本不包含这个参数。这个字段在 ExecRunner 路径下是死字段。
-
-- **`ModeOneshot` 从未被使用**：Engine 始终创建 `ModePersistent` session，`sessions.ModeOneshot` 没有任何代码路径。
-
-- **`Makefile` 的 `fmt` 目标**：`gofmt -w $(shell find . -type f -name '*.go' -not -path './vendor/*')` 可以简化为 `gofmt -w ./...`。
-
-- **`fakeRunner`（engine_test.go）与 `codex.MockRunner` 行为近似重复**：两者的差异仅在 index 越界处理。可以统一，但当前影响可控。
+根本原因：`plannerEvalRunner` 没有给 Codex 设置超时，且 planner prompt 对某些 goal 无法阻止 Codex 开始真实执行。
 
 ---
 
-## 整体评价（第二轮）
+### 中等
 
-相比第一轮，代码成熟度提升明显：
+#### 5. `shouldSkipGitRepoCheck` 每次 `Run` 都调用
 
-- 任务模型有了真正的接入路径（Planner → Engine → Outcome.Tasks）
-- 持久化从零到可用（`store.go` + `sessions show/list`）
-- CLI 变成了一个有子命令结构的真实工具
-- 时间预算、AGENTS.md 容错、`sh -c` 都已修复
+```go
+func (r ExecRunner) Run(ctx context.Context, req Request) (Result, error) {
+    args := []string{"exec", "-"}
+    if shouldSkipGitRepoCheck(req.Workdir) {  // ← 每次 Run 都跑一次 git
+        args = append(args, "--skip-git-repo-check")
+    }
+```
 
-**剩余的核心问题是两个"下一步必须做"：**
-
-1. **`buildPrompt` 不注入 docs**：这是 workspace 加载存在的意义，现在是空转。
-2. **`Planner` 接口缺 context**：越早改代价越低，一旦有了 AI Planner 就必须改。
-
-其他问题（`InScope` 硬编码、`updateTaskStatuses` 只更新 index 0、`sessions list` 报错）都是在下一个迭代前应顺手修的。
+`req.Workdir` 在同一个 Engine.Run 内不变，但每轮 turn 都会重新执行 `git rev-parse --is-inside-work-tree`。5 轮 = 5 次额外 git 子进程。影响不大，但属于不必要的重复。
 
 ---
 
-## 下一步建议
+#### 6. `Request.MaxTurns` 是完全死掉的字段
 
-优先级排序：
+`codex.Request.MaxTurns` 存在，Engine 传 `MaxTurns: 1`，但 `ExecRunner.Run` 构建的命令行里从未使用这个字段。以后如果接入 `AppServerRunner` 这个字段有意义，但目前对 ExecRunner 完全无用，且没有注释说明。
 
-1. **给 `Planner` 接口加 `context.Context` 参数**（破坏性变更，越早越好）。
-2. **在 `buildPrompt` 里注入 `repo.Docs`**，加 token 预算截断（比如总 docs 长度不超过 4000 字符）。
-3. **`updateTaskStatuses` 改为找第一个 pending/in_progress 的 task**，而不是硬用 `[0]`。
-4. **`canxd sessions list` 目录不存在时返回空列表**（5 分钟内可完成）。
-5. **明确 `review.InScope`**：实现真实判断，或者删掉这个字段。
-6. **`StaticPlanner` 改名为 `SingleTaskPlanner`**，并修复固定 ID 问题。
-7. **`go.mod` 改为 `go 1.24`**。
+---
+
+#### 7. `evals/reports/` 生成文件应该被 gitignore
+
+`evals/reports/latest.json`、`latest.jsonl`、`latest.md` 是 `make report` 的输出，每次运行都会变化。这类文件通常不应该进入版本控制（类似 `*.o`、`dist/`）。当前 `.gitignore` 只有 `/canxd` 和 `/.canx/`，没有排除 `evals/reports/`。
+
+---
+
+#### 8. `parsePlanJSON` 可能接受非 Task 的有效 JSON 数组
+
+```go
+var items []Task
+if err := json.Unmarshal([]byte(output[start:end+1]), &items); err == nil {
+    return items, nil
+}
+```
+
+如果输出里包含 `[1, 2, 3]`（valid JSON array of ints），`json.Unmarshal` 到 `[]Task` 会成功，返回包含零值字段的 Task 列表（ID、Title、Goal 全空）。后续的 Normalize + ID 生成会补全 ID，但 Goal 为空的任务仍然会进入 Engine，最终在 prompt 里产生空目标的任务行。
+
+实际发生概率低（Codex 不太可能输出纯整数数组），但技术上是个漏洞。
+
+---
+
+### 小问题（持续）
+
+- **`go.mod go 1.25.0`**：五轮未修，1 分钟可改，该修了。
+- **`sessions.Registry` 无并发保护**：Engine 目前单 goroutine，短期无害。但应在注释里明确"非并发安全"。
+- **`ModeOneshot` 从未使用**：Engine 始终创建 `ModePersistent`，可以考虑删掉或加注释。
+- **`evalreport.ParseGoTestJSON` 不处理 scanner.Bytes() 的错误**：`scanner.Err()` 只在循环后检查，循环内的 `json.Unmarshal` 错误被 `continue` 忽略，是正常设计（容忍部分行解析失败）。
+
+---
+
+## 新增内容评价
+
+### `parsePlanJSON` 改进（`allIndexes` 穷举）
+
+从「取第一个 `[` 到最后一个 `]`」改为「穷举所有组合，取最后一个有效的 JSON 数组」，解决了 Codex 在输出里先输出 planner example 再输出真实结果的场景。有对应测试 `TestParsePlanJSONUsesLastValidJSONArray`。改动合理，测试充分。
+
+时间复杂度：O(n²) on the number of `[` and `]` characters，对实际 Codex 输出（几 KB）完全可接受。
+
+### eval report 工具（`internal/evalreport` + `cmd/canx-eval-report`）
+
+架构清晰：`ParseGoTestJSON` 解析 `go test -json` 输出，`RenderMarkdown` 生成报告。分离了解析和渲染，有单元测试，是正确的设计。
+
+一个小观察：`RenderMarkdown` 在 `results` 为空时仍生成包含表头但无数据行的 Markdown 表格，以及包含空数组的 mermaid 图。这在空报告场景下渲染正常，不是 bug。
+
+### escalate marker 实现
+
+`[canx:escalate]` 被正确识别并在 switch 里优先处理（先于 stop marker）。这个优先级顺序是对的：worker 显式请求升级的意图应该比 stop 优先。实测验证了这个路径（Codex 在只读沙箱里诚实报告无法写入并发出 stop）。
+
+---
+
+## 整体评价
+
+代码已经处于可以真实运行的状态，核心路径经过端到端验证。四轮下来累计修复了约 20 个问题。剩余最重要的事情是：
+
+1. 删掉或实现 `review.InScope`（五轮未修，技术债）
+2. 修 `make report-real` 的超时问题（功能破损）
+3. `CodxPlanner` fallback 加日志或让上层感知降级
+4. Escalate 时把 active task 标为 `blocked` 而不是 `in_progress`

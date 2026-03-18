@@ -79,7 +79,7 @@ func defaultCommand(args []string) (string, []string) {
 func run(cfg loop.Config, opts Options) (string, error) {
 	switch opts.RunnerMode {
 	case "", "exec":
-		return runWithRunner(cfg, opts, codex.NewExecRunner(opts.CodexBin))
+		return runWithRunner(cfg, opts, codex.NewExecRunnerInDir(opts.CodexBin, opts.RepoPath))
 	case "mock":
 		return runWithRunner(cfg, opts, codex.NewMockRunner(codex.Result{
 			Output: "mock worker progress [canx:stop]",
@@ -167,7 +167,7 @@ func selectPlanner(opts Options, workdir string) (tasks.Planner, error) {
 	case "codx":
 		return tasks.CodxPlanner{
 			Runner: plannerRunnerAdapter{
-				runner:  codex.NewExecRunner(opts.CodexBin),
+				runner:  codex.NewExecRunnerInDir(opts.CodexBin, workdir),
 				workdir: workdir,
 			},
 		}, nil

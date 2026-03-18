@@ -1,0 +1,105 @@
+package loop
+
+import (
+	"context"
+	"testing"
+
+	"github.com/farmcan/canx/internal/codex"
+	"github.com/farmcan/canx/internal/workspace"
+)
+
+func TestEngineStopsWhenValidationPasses(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner: &fakeRunner{
+			results: []codex.Result{{Output: "implemented change", ExitCode: 0}},
+		},
+		Workdir: ".",
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:               "ship mvp",
+		MaxTurns:           3,
+		ValidationCommands: []string{"true"},
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if got, want := len(outcome.Turns), 1; got != want {
+		t.Fatalf("Run() turns = %d, want %d", got, want)
+	}
+	if got, want := outcome.Decision.Action, ActionStop; got != want {
+		t.Fatalf("Run() decision = %q, want %q", got, want)
+	}
+}
+
+func TestEngineContinuesUntilMaxTurnsWhenValidationFails(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner: &fakeRunner{
+			results: []codex.Result{
+				{Output: "first try", ExitCode: 0},
+				{Output: "second try", ExitCode: 0},
+			},
+		},
+		Workdir: ".",
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:               "ship mvp",
+		MaxTurns:           2,
+		ValidationCommands: []string{"false"},
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if got, want := len(outcome.Turns), 2; got != want {
+		t.Fatalf("Run() turns = %d, want %d", got, want)
+	}
+	if got, want := outcome.Decision.Reason, "max turns reached"; got != want {
+		t.Fatalf("Run() reason = %q, want %q", got, want)
+	}
+}
+
+func TestEngineStopsOnStopMarker(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner: &fakeRunner{
+			results: []codex.Result{{Output: "done [canx:stop]", ExitCode: 0}},
+		},
+		Workdir: ".",
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:     "ship mvp",
+		MaxTurns: 3,
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if got, want := outcome.Decision.Action, ActionStop; got != want {
+		t.Fatalf("Run() decision = %q, want %q", got, want)
+	}
+	if got, want := outcome.Decision.Reason, "runner requested stop"; got != want {
+		t.Fatalf("Run() reason = %q, want %q", got, want)
+	}
+}
+
+type fakeRunner struct {
+	results []codex.Result
+	index   int
+}
+
+func (r *fakeRunner) Run(_ context.Context, _ codex.Request) (codex.Result, error) {
+	result := r.results[r.index]
+	if r.index < len(r.results)-1 {
+		r.index++
+	}
+	return result, nil
+}

@@ -4,10 +4,11 @@ If you are a fresh agent session, read these files in order:
 
 1. `README.md`
 2. `AGENTS.md`
-3. `docs/2026-03-17-project-context.md`
-4. `docs/2026-03-17-requirements.md`
-5. `docs/2026-03-17-canx-mvp-design.md`
-6. `docs/2026-03-17-canx-mvp-plan.md`
+3. `docs/2026-03-18-product-intent.md`
+4. `docs/2026-03-17-project-context.md`
+5. `docs/2026-03-17-requirements.md`
+6. `docs/2026-03-17-canx-mvp-design.md`
+7. `docs/2026-03-17-canx-mvp-plan.md`
 
 ## Repository in one paragraph
 
@@ -15,11 +16,17 @@ If you are a fresh agent session, read these files in order:
 
 ## Current priority
 
-Build the local single-machine MVP.
+Build the local single-machine Ralph-lite MVP.
 
 ## Current implementation target
 
-Start with:
+Current direction:
+
+- Ralph-lite local loop first
+- multi-Codex collaboration next
+- self-improving workflow after that
+
+Current coding order:
 
 - `internal/tasks`
 - `internal/loop`

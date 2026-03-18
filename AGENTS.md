@@ -20,11 +20,12 @@ Scope: this file applies to the entire `canx/` repository.
 - On a fresh session, read these files first:
   1. `START_HERE.md`
   2. `README.md`
-  3. `docs/2026-03-17-project-context.md`
-  4. `docs/2026-03-17-requirements.md`
-  5. `docs/2026-03-17-canx-mvp-design.md`
-  6. `docs/2026-03-17-canx-mvp-plan.md`
-- `docs/2026-03-17-naming-and-positioning.md` and `docs/research/` are reference material, not mandatory first-pass reads.
+  3. `docs/2026-03-18-product-intent.md`
+  4. `docs/2026-03-17-project-context.md`
+  5. `docs/2026-03-17-requirements.md`
+  6. `docs/2026-03-17-canx-mvp-design.md`
+  7. `docs/2026-03-17-canx-mvp-plan.md`
+- `docs/research/` is reference material, not mandatory first-pass reading.
 
 ## Engineering rules
 

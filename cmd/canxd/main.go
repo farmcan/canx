@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
+	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/loop"
 	"github.com/farmcan/canx/internal/workspace"
 )
@@ -20,15 +23,20 @@ func main() {
 }
 
 type Options struct {
-	RepoPath string
+	RepoPath    string
+	CodexBin    string
+	Validations []string
 }
 
 func parseFlags() (loop.Config, Options) {
 	var (
 		goal     = flag.String("goal", "bootstrap canx", "high-level goal for this run")
 		maxTurns = flag.Int("max-turns", 1, "maximum number of loop turns")
-		repoPath = flag.String("repo", "", "target repository path")
+		repoPath = flag.String("repo", ".", "target repository path")
+		codexBin = flag.String("codex-bin", "codex", "codex binary path")
 	)
+	var validations multiFlag
+	flag.Var(&validations, "validate", "validation command to run after each turn (repeatable)")
 
 	flag.Parse()
 
@@ -36,33 +44,68 @@ func parseFlags() (loop.Config, Options) {
 			Goal:     *goal,
 			MaxTurns: *maxTurns,
 		}, Options{
-			RepoPath: *repoPath,
+			RepoPath:    *repoPath,
+			CodexBin:    *codexBin,
+			Validations: validations,
 		}
 }
 
 func run(cfg loop.Config, opts Options) (string, error) {
+	return runWithRunner(cfg, opts, codex.NewExecRunner(opts.CodexBin))
+}
+
+func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, error) {
 	if err := cfg.Validate(); err != nil {
 		return "", err
 	}
 
-	workspaceSummary := "workspace=unloaded"
-	if opts.RepoPath != "" {
-		ctx, err := workspace.Load(opts.RepoPath)
-		if err != nil {
-			return "", err
-		}
+	repoPath := opts.RepoPath
+	if repoPath == "" {
+		repoPath = "."
+	}
 
-		workspaceSummary = fmt.Sprintf("workspace=%s docs=%d", opts.RepoPath, len(ctx.Docs))
+	absRepoPath, err := filepath.Abs(repoPath)
+	if err != nil {
+		return "", err
+	}
+
+	repo, err := workspace.Load(absRepoPath)
+	if err != nil {
+		return "", err
+	}
+
+	cfg.ValidationCommands = opts.Validations
+	engine := loop.Engine{
+		Runner:  runner,
+		Workdir: absRepoPath,
+	}
+
+	outcome, err := engine.Run(context.Background(), cfg, repo)
+	if err != nil {
+		return "", err
 	}
 
 	return fmt.Sprintf(
-		"canx loop ready: goal=%s max_turns=%d %s",
-		cfg.Goal,
-		cfg.MaxTurns,
-		workspaceSummary,
+		"canx decision=%s reason=%s turns=%d workspace=%s docs=%d",
+		outcome.Decision.Action,
+		outcome.Decision.Reason,
+		len(outcome.Turns),
+		absRepoPath,
+		len(repo.Docs),
 	), nil
 }
 
 func init() {
 	flag.CommandLine.SetOutput(os.Stderr)
+}
+
+type multiFlag []string
+
+func (m *multiFlag) String() string {
+	return fmt.Sprintf("%v", []string(*m))
+}
+
+func (m *multiFlag) Set(value string) error {
+	*m = append(*m, value)
+	return nil
 }

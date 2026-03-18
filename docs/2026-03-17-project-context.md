@@ -27,6 +27,8 @@ The user wants the default workflow to become:
 - humans define goals and step in for critical choices
 - development moves through bounded loops with clear gates
 
+The target end state is that `CanX` helps build downstream projects first, then gradually becomes capable of accelerating its own development.
+
 ## Desired outcome
 
 Build a thin orchestration layer that can:

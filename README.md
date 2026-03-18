@@ -50,11 +50,11 @@ For larger projects, this makes AI-assisted development slower and less reliable
 ## Reference docs
 
 - Start here: `START_HERE.md`
+- Product intent: `docs/2026-03-18-product-intent.md`
 - Project context: `docs/2026-03-17-project-context.md`
 - Requirements: `docs/2026-03-17-requirements.md`
 - MVP design: `docs/2026-03-17-canx-mvp-design.md`
 - MVP plan: `docs/2026-03-17-canx-mvp-plan.md`
-- Name and scope: `docs/2026-03-17-naming-and-positioning.md`
 - Research landscape: `docs/research/2026-03-17-orchestrator-landscape.md`
 
 ## Initial principle
@@ -84,5 +84,13 @@ go run ./cmd/canxd -goal "ship canx mvp" -max-turns 2 -repo .
 Expected output shape:
 
 ```text
-canx loop ready: goal=... max_turns=... workspace=... docs=...
+canx decision=... reason=... turns=... workspace=... docs=...
+```
+
+## Fast eval
+
+Run the lightweight smoke suite:
+
+```bash
+go test ./evals/smoke -v
 ```

@@ -19,6 +19,12 @@ Build a local single-machine orchestrator that coordinates multiple Codex worker
 
 The core problem it solves is that single-agent development remains too human-centric and too slow for larger projects. `CanX` shifts the default from one long human-agent conversation to an AI-to-AI delivery loop with bounded, reviewable steps.
 
+The implementation style for the first usable version should be thought of as **Ralph-lite**:
+
+- keep the control loop simple
+- prefer fast iteration over protocol completeness
+- prove usefulness locally before expanding runtime sophistication
+
 ## Scope
 
 ### In scope for MVP

@@ -47,11 +47,12 @@ For larger projects, this makes AI-assisted development slower and less reliable
 ## Architecture direction
 
 - `cmd/canxd`: orchestrator entrypoint
+- `cmd/canxd serve`: local dashboard and read-only API
 - `internal/codex`: Codex CLI / app-server adapters
 - `internal/loop`: bounded supervisor loop
 - `internal/tasks`: task graph, ownership, status
 - `internal/review`: review and gate policies
-- `internal/gitops`: branch, patch, validate, merge helpers
+- `internal/runlog`: session reports, run records, and event streams
 
 ## Reference docs
 
@@ -61,6 +62,7 @@ For larger projects, this makes AI-assisted development slower and less reliable
 - Runbook: `docs/runbook.md`
 - Testing methods: `docs/testing-methods.md`
 - Prompt templates: `docs/prompt-templates.md`
+- Collaboration room design: `docs/2026-03-19-collab-room-design.md`
 - Evaluation landscape: `docs/research/2026-03-18-evaluation-landscape.md`
 - Codex/OpenClaw/Ralph/ACP notes: `docs/research/2026-03-18-codex-openclaw-ralph-acp.md`
 
@@ -110,6 +112,14 @@ go run ./cmd/canxd -repo . sessions list
 go run ./cmd/canxd -repo . sessions show <session-id>
 ```
 
+Inspect persisted runs and events through the local dashboard:
+
+```bash
+go run ./cmd/canxd serve -repo .
+```
+
+Then open `http://127.0.0.1:8090`.
+
 ## Current MVP2 shape
 
 The current local MVP now includes:
@@ -118,6 +128,8 @@ The current local MVP now includes:
 - lightweight task planning wired into the live engine
 - Codex runner abstraction
 - lightweight session registry inspired by ACP/session models
+- file-backed run/event persistence under `.canx/runs/`
+- minimal local dashboard for runs, tasks, and event streams
 - fast smoke evals
 
 ## Fast eval

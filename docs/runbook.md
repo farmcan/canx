@@ -107,6 +107,21 @@ go run ./cmd/canxd \
 
 > `-planner codx` 先调用 Codex 把 goal 分解成 2-5 个子任务，再逐一执行。每个子任务都会显示在 session report 里。
 
+### 启动本地 dashboard
+
+```bash
+go run ./cmd/canxd serve -repo .
+```
+
+打开：`http://127.0.0.1:8090`
+
+当前 dashboard 能看到：
+
+- runs 列表
+- 单次 run 的最终 task 状态
+- 原始 event stream
+- runtime 元数据（在 turn event 里）
+
 ---
 
 ## 查看运行历史
@@ -120,6 +135,13 @@ go run ./cmd/canxd -repo . sessions show <session-id>
 ```
 
 session-id 是不带 `.json` 后缀的文件名，例如 `session-968503e2847fdad7`。
+
+Run 和 event 文件默认保存在：
+
+```text
+.canx/runs/<run-id>/run.json
+.canx/runs/<run-id>/events.jsonl
+```
 
 ---
 
@@ -189,6 +211,7 @@ go run ./cmd/canxd \
 
 - `decision`
 - `reason`
+- `run`
 - `tasks`
 - `model / sandbox / approval / runtime_session`
 - `session show <session-id>` 的输出

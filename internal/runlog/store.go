@@ -13,6 +13,7 @@ import (
 
 type SessionReport struct {
 	Session   sessions.Session `json:"session"`
+	RunID     string           `json:"run_id,omitempty"`
 	Runtime   codex.Runtime    `json:"runtime,omitempty"`
 	Decision  string           `json:"decision"`
 	Reason    string           `json:"reason"`

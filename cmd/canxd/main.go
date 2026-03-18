@@ -26,7 +26,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println(output)
+	if output != "" {
+		fmt.Println(output)
+	}
 }
 
 type Options struct {
@@ -115,6 +117,25 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 	}
 
 	cfg.ValidationCommands = opts.Validations
+	eventStore := runlog.NewEventStore(absRepoPath)
+	runID := runlog.NewRunID()
+	initialRun := runlog.RunRecord{
+		ID:        runID,
+		Goal:      cfg.Goal,
+		RepoRoot:  absRepoPath,
+		Status:    "running",
+		StartedAt: time.Now(),
+	}
+	if err := eventStore.SaveRun(initialRun); err != nil {
+		return "", err
+	}
+	if err := eventStore.AppendEvent(runID, runlog.Event{
+		Kind:      "run_started",
+		Message:   cfg.Goal,
+		Timestamp: initialRun.StartedAt,
+	}); err != nil {
+		return "", err
+	}
 	engine := loop.Engine{
 		Runner:      runner,
 		Planner:     planner,
@@ -126,8 +147,31 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 	if err != nil {
 		return "", err
 	}
+	finishedAt := time.Now()
+	record := runlog.RunRecord{
+		ID:         runID,
+		Goal:       cfg.Goal,
+		RepoRoot:   absRepoPath,
+		Status:     string(outcome.Decision.Action),
+		Reason:     outcome.Decision.Reason,
+		SessionID:  outcome.Session.ID,
+		TurnCount:  len(outcome.Turns),
+		TaskCount:  len(outcome.Tasks),
+		Tasks:      outcome.Tasks,
+		StartedAt:  initialRun.StartedAt,
+		FinishedAt: &finishedAt,
+	}
+	if err := eventStore.SaveRun(record); err != nil {
+		return "", err
+	}
+	for _, event := range outcomeEvents(runID, outcome) {
+		if err := eventStore.AppendEvent(runID, event); err != nil {
+			return "", err
+		}
+	}
 	if _, err := runlog.WriteSessionReport(absRepoPath, runlog.SessionReport{
 		Session:   outcome.Session,
+		RunID:     runID,
 		Runtime:   latestRuntime(outcome),
 		Decision:  outcome.Decision.Action,
 		Reason:    outcome.Decision.Reason,
@@ -138,7 +182,8 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 	}
 
 	return fmt.Sprintf(
-		"canx decision=%s reason=%s turns=%d tasks=%d session=%s workspace=%s docs=%d model=%s sandbox=%s approval=%s runtime_session=%s",
+		"canx run=%s decision=%s reason=%s turns=%d tasks=%d session=%s workspace=%s docs=%d model=%s sandbox=%s approval=%s runtime_session=%s",
+		runID,
 		outcome.Decision.Action,
 		outcome.Decision.Reason,
 		len(outcome.Turns),
@@ -199,6 +244,8 @@ func dispatch(command string, cfg loop.Config, opts Options, args []string) (str
 		return run(cfg, opts)
 	case "sessions":
 		return inspectSessions(opts, args)
+	case "serve":
+		return serve(opts)
 	default:
 		return "", fmt.Errorf("unknown command: %s", command)
 	}
@@ -252,6 +299,69 @@ func inspectSessions(opts Options, args []string) (string, error) {
 	}
 
 	return "", fmt.Errorf("usage: canxd sessions list | canxd sessions show <session-id>")
+}
+
+func outcomeEvents(runID string, outcome loop.Outcome) []runlog.Event {
+	events := []runlog.Event{
+		{
+			RunID:     runID,
+			Kind:      "session_started",
+			SessionID: outcome.Session.ID,
+			Timestamp: outcome.Session.CreatedAt,
+			Runtime: map[string]any{
+				"mode": outcome.Session.Mode,
+				"cwd":  outcome.Session.CWD,
+			},
+		},
+	}
+	for _, task := range outcome.Tasks {
+		events = append(events, runlog.Event{
+			RunID:     runID,
+			Kind:      "task_state",
+			SessionID: outcome.Session.ID,
+			TaskID:    task.ID,
+			Message:   task.Title,
+			Tasks:     []tasks.Task{task},
+		})
+	}
+	for _, turn := range outcome.Turns {
+		events = append(events,
+			runlog.Event{
+				RunID:      runID,
+				Kind:       "turn_completed",
+				SessionID:  outcome.Session.ID,
+				Turn:       turn.Number,
+				Message:    summarizePrompt(turn.Prompt),
+				Output:     turn.RunnerResult.Output,
+				Validated:  turn.ValidationPassed,
+				Validation: turn.ValidationOutput,
+				Runtime: map[string]any{
+					"model":      turn.RunnerResult.Runtime.Model,
+					"provider":   turn.RunnerResult.Runtime.Provider,
+					"sandbox":    turn.RunnerResult.Runtime.Sandbox,
+					"approval":   turn.RunnerResult.Runtime.Approval,
+					"session_id": turn.RunnerResult.Runtime.SessionID,
+				},
+			},
+		)
+	}
+	events = append(events, runlog.Event{
+		RunID:     runID,
+		Kind:      "run_finished",
+		SessionID: outcome.Session.ID,
+		Decision:  string(outcome.Decision.Action),
+		Reason:    outcome.Decision.Reason,
+		Tasks:     outcome.Tasks,
+	})
+	return events
+}
+
+func summarizePrompt(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	if len(prompt) > 400 {
+		return prompt[:400] + "...(truncated)"
+	}
+	return prompt
 }
 
 func init() {

@@ -1,0 +1,35 @@
+body {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  margin: 0;
+  background: #111827;
+  color: #e5e7eb;
+}
+
+header, main {
+  padding: 16px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 16px;
+}
+
+button {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: #1f2937;
+  border: 1px solid #374151;
+  color: #e5e7eb;
+  cursor: pointer;
+}
+
+pre {
+  background: #0b1220;
+  border: 1px solid #374151;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+}

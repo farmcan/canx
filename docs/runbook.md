@@ -192,3 +192,51 @@ go run ./cmd/canxd \
 - `tasks`
 - `model / sandbox / approval / runtime_session`
 - `session show <session-id>` 的输出
+
+---
+
+## 测试分层说明
+
+每次迭代建议按这个顺序：
+
+### 第一层：单元测试（无需 Codex，毫秒级）
+
+```bash
+go test ./internal/...
+go test ./cmd/...
+go test ./...          # 全部
+```
+
+适用：parser、planner 逻辑、loop 行为、session / report 持久化。
+
+### 第二层：Agentic eval（mock runner，毫秒级）
+
+```bash
+make eval              # 等同 go test ./evals/... -v
+make report            # 生成 evals/reports/latest.md
+```
+
+核心指标：`success` / `turns` / `tasks` / `done_tasks` / `duration_ms` / `multi_task`
+
+### 第三层：真实 Codex eval（需要 codex 二进制，约 20-120s）
+
+```bash
+make eval-real         # 真实 codex exec smoke
+make report-real       # 生成含真实 codex 结果的报告
+```
+
+或单独运行：
+
+```bash
+CANX_EVAL_REAL=1 go test ./evals/agentic -run TestAgenticRealExecSmokeIfEnabled -v -timeout 120s
+CANX_EVAL_REAL=1 go test ./evals/agentic -run TestPlannerRealSmokeIfEnabled -v -timeout 200s
+```
+
+### 第四层：隔离实验（git worktree，不污染主工作区）
+
+```bash
+git worktree add ../canx-exp main
+cd ../canx-exp
+# 做实验，记录结果后删除 worktree
+git worktree remove ../canx-exp
+```

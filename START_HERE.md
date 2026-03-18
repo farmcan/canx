@@ -1,60 +1,88 @@
 # Start Here
 
-If you are a fresh agent session, read these files in order:
+## 这是什么项目
 
-1. `README.md`
-2. `AGENTS.md`
-3. `docs/README.md`
-4. `docs/2026-03-18-product-intent.md`
-5. `docs/runbook.md`
-6. `docs/testing-methods.md`
-7. `docs/prompt-templates.md`
+**CanX** 是一个 Go 编排器，让多个 Codex worker 协作完成软件交付任务。
 
-## Repository in one paragraph
+```
+人类提供目标 → Planner 分解任务 → Codex Worker 执行 → validation（go test）→ stop/escalate
+```
 
-`CanX` is a `Go` repository for orchestrating bounded, multi-agent software delivery loops around Codex. It is not a new model runtime and not a business app. It exists to move software development from long human-agent chat loops to AI-to-AI collaboration with supervisor, worker, reviewer, validation, and stop conditions.
+不是聊天机器人，不是业务应用，不是模型运行时。它的核心价值：
 
-## Current priority
+- **确定性 validation gate**（build + test 通过才继续，所有 Python 框架都没有）
+- **有界循环**（max-turns + budget-seconds + stop-marker 防止无限循环）
+- **仓库上下文注入**（README + AGENTS.md + docs 自动注入每个 prompt）
+- **持久化 session report**（`.canx/sessions/` 保存每次运行记录）
 
-Build the local single-machine Ralph-lite MVP.
+---
 
-Evaluation and fast iteration are top priority. Favor changes that improve measurable loop quality over extra abstraction.
+## 当前状态：MVP 已可用
 
-## Current implementation target
+所有核心模块已实现并通过测试：
 
-Current direction:
+```bash
+make test    # 11 包全绿
+make eval    # 3 个 agentic eval case 全 pass
+```
 
-- Ralph-lite local loop first
-- multi-Codex collaboration next
-- self-improving workflow after that
+真实 Codex 集成已验证（`CANX_EVAL_REAL=1 make eval-real`）。
 
-Current coding order:
+---
 
-- `internal/tasks`
-- `internal/loop`
+## 立刻能做的事
 
-Then continue with:
+### 验证环境
 
-- `internal/workspace`
-- `internal/codex`
-- `internal/review`
-- `internal/runlog`
-- `cmd/canxd`
+```bash
+make build && make test
+```
 
-Optional background reading:
+### 跑一次 mock
 
-- `docs/research/`
-- `docs/2026-03-17-requirements.md`
-- `docs/2026-03-17-canx-mvp-design.md`
-- `docs/2026-03-18-usable-platform-plan.md`
-- `docs/2026-03-17-canx-mvp-plan.md`
-- `docs/2026-03-18-landscape-analysis.md`
-- `docs/review.md`
+```bash
+go run ./cmd/canxd -goal "test mock run" -runner mock -repo . -max-turns 1
+```
 
-## Rules of engagement
+### 跑一次真实 Codex（只读，约 30s）
 
-- Do not rebuild generic agent frameworks.
-- Reuse Codex surfaces; own only orchestration logic.
-- Keep interfaces small and explicit.
-- Use TDD for behavior changes.
-- Run `make test` and `make build` before claiming success.
+```bash
+go run ./cmd/canxd \
+  -goal "Read README.md and summarize what CanX does in 2 sentences. Do not modify any files. Reply with your summary then [canx:stop]." \
+  -runner exec -repo . -max-turns 1 -turn-timeout 90s
+```
+
+---
+
+## 必读文档（按顺序）
+
+| 文档 | 内容 |
+|---|---|
+| `README.md` | 模块结构、构建方式 |
+| `AGENTS.md` | 工程规则（必须遵守） |
+| `docs/context.md` | 项目全局：架构图、当前状态、下一步优先级 |
+| `docs/runbook.md` | 所有验证过的可运行命令 |
+
+### 可选（背景分析）
+
+| 文档 | 内容 |
+|---|---|
+| `docs/framework-comparison.md` | 外部框架对比（LangGraph / CrewAI / Codex App Server），CanX 演进方向 |
+| `docs/prompt-templates.md` | 写 goal 的推荐模板 |
+
+---
+
+## 下一个最重要的工程任务
+
+**AppServerRunner（P0）**：接入 Codex App Server JSON-RPC，替换当前 `codex exec -` subprocess 模式。每轮不再 fork 新进程，Thread 可跨 turn 复用上下文。
+
+详见 `docs/context.md` → "下一步优先级" 和 `docs/framework-comparison.md` → "4.1 接入 Codex App Server"。
+
+---
+
+## 规则（每次改动前读一遍）
+
+- 改动前写测试，改完跑 `make fmt` + `make build` + `make test`
+- 不要重新实现 Codex、模型运行时、Docker 沙箱、通用 agent 框架
+- 保持接口小，避免投机性抽象
+- 一个 agent 一次只改一个文件范围

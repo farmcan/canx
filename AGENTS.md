@@ -20,15 +20,12 @@ Scope: this file applies to the entire `canx/` repository.
 - On a fresh session, read these files first:
   1. `START_HERE.md`
   2. `README.md`
-  3. `docs/README.md`
-  4. `docs/2026-03-18-product-intent.md`
+  3. `AGENTS.md` (this file)
+  4. `docs/context.md`
   5. `docs/runbook.md`
-  6. `docs/testing-methods.md`
-  7. `docs/prompt-templates.md`
-- `docs/README.md` is the canonical docs map.
-- `docs/2026-03-17-requirements.md`, `docs/2026-03-17-canx-mvp-design.md`, and `docs/2026-03-18-usable-platform-plan.md` are background design docs, not mandatory first-pass reading.
-- `docs/2026-03-17-canx-mvp-plan.md`, `docs/2026-03-18-landscape-analysis.md`, and `docs/review.md` are historical/reference material.
-- `docs/research/2026-03-18-evaluation-landscape.md` is the current baseline for benchmark selection and evaluation philosophy.
+- Optional background:
+  - `docs/framework-comparison.md`: external framework analysis and evolution roadmap
+  - `docs/prompt-templates.md`: goal prompt patterns
 
 ## Engineering rules
 
@@ -57,5 +54,5 @@ Scope: this file applies to the entire `canx/` repository.
 ## Documentation
 
 - Keep rationale in `docs/`.
-- When external tools or projects influence design, add the reference under `docs/research/`.
-- When changing architecture direction, update `README.md` and the relevant design doc together.
+- When external tools or projects influence design, add findings to `docs/framework-comparison.md`.
+- When changing architecture direction, update `docs/context.md` together with the code change.

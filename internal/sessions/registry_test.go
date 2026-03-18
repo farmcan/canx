@@ -60,3 +60,38 @@ func TestRegistryCloseMarksSessionClosed(t *testing.T) {
 		t.Fatal("expected closed session")
 	}
 }
+
+func TestRegistryListReturnsSessionsSortedByLabel(t *testing.T) {
+	t.Parallel()
+
+	registry := NewRegistry()
+	_, _ = registry.Spawn(SpawnRequest{Label: "b", Mode: ModePersistent})
+	_, _ = registry.Spawn(SpawnRequest{Label: "a", Mode: ModePersistent})
+
+	sessions := registry.List()
+	if got, want := len(sessions), 2; got != want {
+		t.Fatalf("List() len = %d, want %d", got, want)
+	}
+	if got, want := sessions[0].Label, "a"; got != want {
+		t.Fatalf("List()[0].Label = %q, want %q", got, want)
+	}
+}
+
+func TestRegistrySteerUpdatesLastSummary(t *testing.T) {
+	t.Parallel()
+
+	registry := NewRegistry()
+	session, err := registry.Spawn(SpawnRequest{Label: "main", Mode: ModePersistent})
+	if err != nil {
+		t.Fatalf("Spawn() error = %v", err)
+	}
+
+	session, err = registry.Steer(session.ID, "turn 1 summary")
+	if err != nil {
+		t.Fatalf("Steer() error = %v", err)
+	}
+
+	if got, want := session.LastSummary, "turn 1 summary"; got != want {
+		t.Fatalf("LastSummary = %q, want %q", got, want)
+	}
+}

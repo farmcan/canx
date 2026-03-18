@@ -53,3 +53,21 @@ func TestLoadCollectsMarkdownDocs(t *testing.T) {
 		t.Fatalf("Load() docs = %d, want 1", len(ctx.Docs))
 	}
 }
+
+func TestLoadAllowsMissingAgentsFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("readme"), 0o644); err != nil {
+		t.Fatalf("WriteFile(README) error = %v", err)
+	}
+
+	ctx, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if ctx.Readme == "" {
+		t.Fatal("expected readme content")
+	}
+}

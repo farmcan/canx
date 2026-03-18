@@ -2,22 +2,27 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/loop"
+	"github.com/farmcan/canx/internal/runlog"
 	"github.com/farmcan/canx/internal/workspace"
 )
 
 func main() {
-	cfg, opts := parseFlags()
-	output, err := run(cfg, opts)
+	cfg, opts, command, args := parseFlags()
+	output, err := dispatch(command, cfg, opts, args)
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "canx: %v\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Println(output)
@@ -31,10 +36,11 @@ type Options struct {
 	Validations []string
 }
 
-func parseFlags() (loop.Config, Options) {
+func parseFlags() (loop.Config, Options, string, []string) {
 	var (
 		goal     = flag.String("goal", "bootstrap canx", "high-level goal for this run")
 		maxTurns = flag.Int("max-turns", 1, "maximum number of loop turns")
+		budget   = flag.Int("budget-seconds", 0, "total run budget in seconds (0 means disabled)")
 		repoPath = flag.String("repo", ".", "target repository path")
 		codexBin = flag.String("codex-bin", "codex", "codex binary path")
 		runner   = flag.String("runner", "exec", "runner mode: exec or mock")
@@ -45,16 +51,25 @@ func parseFlags() (loop.Config, Options) {
 
 	flag.Parse()
 
+	command, args := defaultCommand(flag.Args())
 	return loop.Config{
-			Goal:     *goal,
-			MaxTurns: *maxTurns,
+			Goal:          *goal,
+			MaxTurns:      *maxTurns,
+			BudgetSeconds: *budget,
 		}, Options{
 			RepoPath:    *repoPath,
 			CodexBin:    *codexBin,
 			RunnerMode:  *runner,
 			TurnTimeout: *timeout,
 			Validations: validations,
-		}
+		}, command, args
+}
+
+func defaultCommand(args []string) (string, []string) {
+	if len(args) == 0 {
+		return "run", nil
+	}
+	return args[0], args[1:]
 }
 
 func run(cfg loop.Config, opts Options) (string, error) {
@@ -101,6 +116,14 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 	if err != nil {
 		return "", err
 	}
+	if _, err := runlog.WriteSessionReport(absRepoPath, runlog.SessionReport{
+		Session:   outcome.Session,
+		Decision:  outcome.Decision.Action,
+		Reason:    outcome.Decision.Reason,
+		TurnCount: len(outcome.Turns),
+	}); err != nil {
+		return "", err
+	}
 
 	return fmt.Sprintf(
 		"canx decision=%s reason=%s turns=%d session=%s workspace=%s docs=%d",
@@ -111,6 +134,64 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 		absRepoPath,
 		len(repo.Docs),
 	), nil
+}
+
+func dispatch(command string, cfg loop.Config, opts Options, args []string) (string, error) {
+	switch command {
+	case "run":
+		return run(cfg, opts)
+	case "sessions":
+		return inspectSessions(opts, args)
+	default:
+		return "", fmt.Errorf("unknown command: %s", command)
+	}
+}
+
+func inspectSessions(opts Options, args []string) (string, error) {
+	repoPath := opts.RepoPath
+	if repoPath == "" {
+		repoPath = "."
+	}
+
+	root, err := filepath.Abs(repoPath)
+	if err != nil {
+		return "", err
+	}
+	sessionsDir := filepath.Join(root, ".canx", "sessions")
+
+	if len(args) == 0 || args[0] == "list" {
+		entries, err := os.ReadDir(sessionsDir)
+		if err != nil {
+			return "", err
+		}
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+				continue
+			}
+			names = append(names, entry.Name())
+		}
+		sort.Strings(names)
+		return strings.Join(names, "\n"), nil
+	}
+
+	if args[0] == "show" && len(args) > 1 {
+		data, err := os.ReadFile(filepath.Join(sessionsDir, args[1]+".json"))
+		if err != nil {
+			return "", err
+		}
+		var report runlog.SessionReport
+		if err := json.Unmarshal(data, &report); err != nil {
+			return "", err
+		}
+		formatted, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(formatted), nil
+	}
+
+	return "", fmt.Errorf("usage: canxd sessions list | canxd sessions show <session-id>")
 }
 
 func init() {

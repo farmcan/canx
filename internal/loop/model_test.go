@@ -31,6 +31,15 @@ func TestConfigValidateRequiresGoalAndMaxTurns(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "invalid budget",
+			config: Config{
+				Goal:          "ship task model",
+				MaxTurns:      1,
+				BudgetSeconds: -1,
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

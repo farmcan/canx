@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"sort"
+	"time"
 )
 
 const (
@@ -24,12 +26,15 @@ type SpawnRequest struct {
 }
 
 type Session struct {
-	ID     string
-	Label  string
-	Mode   string
-	CWD    string
-	Turns  []string
-	Closed bool
+	ID          string
+	Label       string
+	Mode        string
+	CWD         string
+	Turns       []string
+	LastSummary string
+	Closed      bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type Registry struct {
@@ -52,10 +57,12 @@ func (r *Registry) Spawn(req SpawnRequest) (Session, error) {
 	}
 
 	session := Session{
-		ID:    newSessionID(),
-		Label: req.Label,
-		Mode:  req.Mode,
-		CWD:   req.CWD,
+		ID:        newSessionID(),
+		Label:     req.Label,
+		Mode:      req.Mode,
+		CWD:       req.CWD,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 	r.sessions[session.ID] = session
 	return session, nil
@@ -75,6 +82,8 @@ func (r *Registry) Steer(id, summary string) (Session, error) {
 		return Session{}, err
 	}
 	session.Turns = append(session.Turns, summary)
+	session.LastSummary = summary
+	session.UpdatedAt = time.Now()
 	r.sessions[id] = session
 	return session, nil
 }
@@ -85,8 +94,25 @@ func (r *Registry) Close(id string) (Session, error) {
 		return Session{}, err
 	}
 	session.Closed = true
+	session.UpdatedAt = time.Now()
 	r.sessions[id] = session
 	return session, nil
+}
+
+func (r *Registry) List() []Session {
+	sessions := make([]Session, 0, len(r.sessions))
+	for _, session := range r.sessions {
+		sessions = append(sessions, session)
+	}
+
+	sort.Slice(sessions, func(i, j int) bool {
+		if sessions[i].Label == sessions[j].Label {
+			return sessions[i].ID < sessions[j].ID
+		}
+		return sessions[i].Label < sessions[j].Label
+	})
+
+	return sessions
 }
 
 func newSessionID() string {

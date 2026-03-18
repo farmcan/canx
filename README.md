@@ -93,6 +93,13 @@ For a fast local demo without invoking real Codex:
 go run ./cmd/canxd -goal "ship canx mvp" -max-turns 2 -repo . -runner mock
 ```
 
+Inspect persisted sessions after a run:
+
+```bash
+go run ./cmd/canxd -repo . sessions list
+go run ./cmd/canxd -repo . sessions show <session-id>
+```
+
 ## Current MVP2 shape
 
 The current local MVP now includes:

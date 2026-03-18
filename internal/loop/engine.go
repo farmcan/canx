@@ -45,6 +45,11 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 	if err := cfg.Validate(); err != nil {
 		return Outcome{}, err
 	}
+	if cfg.BudgetSeconds > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(cfg.BudgetSeconds)*time.Second)
+		defer cancel()
+	}
 	if e.Runner == nil {
 		return Outcome{}, ErrMissingRunner
 	}
@@ -138,7 +143,7 @@ func buildPrompt(goal string, repo workspace.Context, turns []Turn) string {
 	if len(turns) > 0 {
 		last := turns[len(turns)-1]
 		builder.WriteString("\n\nPrevious turn summary:\n")
-		builder.WriteString(last.RunnerResult.Output)
+		builder.WriteString(summarizeTurn(last.Number, last.RunnerResult.Output, last.ValidationPassed))
 	}
 	builder.WriteString("\n\nRespond with progress, and include [canx:stop] when the task is complete.")
 	return builder.String()
@@ -150,7 +155,7 @@ func runValidation(ctx context.Context, workdir string, commands []string) bool 
 	}
 
 	for _, command := range commands {
-		cmd := exec.CommandContext(ctx, "zsh", "-lc", command)
+		cmd := exec.CommandContext(ctx, "sh", "-c", command)
 		if workdir != "" {
 			cmd.Dir = workdir
 		}

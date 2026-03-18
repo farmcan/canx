@@ -26,7 +26,7 @@ func Load(root string) (Context, error) {
 	}
 
 	agents, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return Context{}, err
 	}
 

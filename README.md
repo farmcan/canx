@@ -125,9 +125,12 @@ The dashboard currently shows:
 
 - runs with status and reason
 - task list plus task detail
+- session list plus session detail
 - session metadata and report detail
+- docs content viewer
 - raw event stream
 - repo context (`README.md`, `AGENTS.md`, docs inventory)
+- room/message panel for human instructions
 
 ## Current MVP2 shape
 

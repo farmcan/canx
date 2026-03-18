@@ -119,11 +119,25 @@ go run ./cmd/canxd serve -repo .
 
 - runs 列表
 - 单次 run 的最终 task 状态
+- session 列表
 - task detail
 - session detail
 - repo context（`README.md` / `AGENTS.md` / docs 列表）
 - 原始 event stream
 - runtime 元数据（在 turn event 里）
+- room/message 面板，可手工追加人类指令
+
+### 验证 room/message API
+
+```bash
+go run ./cmd/canxd -goal "room ui smoke" -runner mock -repo . -max-turns 1
+go run ./cmd/canxd serve -repo .
+curl http://127.0.0.1:8090/api/rooms
+curl -X POST http://127.0.0.1:8090/api/rooms/<room-id>/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"participant_id":"human-local","role":"human","kind":"instruction","body":"adjust strategy"}'
+curl http://127.0.0.1:8090/api/rooms/<room-id>/messages
+```
 
 ---
 

@@ -55,6 +55,14 @@ func TestServeExposesTaskSessionAndContextAPI(t *testing.T) {
 		t.Fatalf("MkdirAll(docs) error = %v", err)
 	}
 	writeFile(t, filepath.Join(root, "docs", "one.md"), "doc one")
+	if err := os.MkdirAll(filepath.Join(root, "docs", "superpowers", "specs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(specs) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "docs", "superpowers", "plans"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(plans) error = %v", err)
+	}
+	writeFile(t, filepath.Join(root, "docs", "superpowers", "specs", "2026-03-19-spec.md"), "latest spec")
+	writeFile(t, filepath.Join(root, "docs", "superpowers", "plans", "2026-03-19-plan.md"), "latest plan")
 
 	store := runlog.NewEventStore(root)
 	task := tasks.Task{ID: "task-1", Title: "Task 1", Goal: "ship ui", Status: tasks.StatusDone}
@@ -126,6 +134,12 @@ func TestServeExposesTaskSessionAndContextAPI(t *testing.T) {
 	}
 	if contextPayload["readme"] == "" {
 		t.Fatal("expected readme in context payload")
+	}
+	if contextPayload["latest_spec_path"] != "docs/superpowers/specs/2026-03-19-spec.md" {
+		t.Fatalf("latest_spec_path = %#v", contextPayload["latest_spec_path"])
+	}
+	if contextPayload["latest_plan_path"] != "docs/superpowers/plans/2026-03-19-plan.md" {
+		t.Fatalf("latest_plan_path = %#v", contextPayload["latest_plan_path"])
 	}
 
 	sessionsReq := httptest.NewRequest("GET", "/api/sessions", nil)

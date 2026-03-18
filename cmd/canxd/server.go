@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/farmcan/canx/internal/rooms"
@@ -151,11 +152,15 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 			writeError(w, err)
 			return
 		}
+		latestSpecPath := latestDocPath(store.Root, filepath.Join("docs", "superpowers", "specs"))
+		latestPlanPath := latestDocPath(store.Root, filepath.Join("docs", "superpowers", "plans"))
 		writeJSON(w, map[string]any{
-			"root":   ctx.Root,
-			"readme": ctx.Readme,
-			"agents": ctx.Agents,
-			"docs":   ctx.Docs,
+			"root":             ctx.Root,
+			"readme":           ctx.Readme,
+			"agents":           ctx.Agents,
+			"docs":             ctx.Docs,
+			"latest_spec_path": latestSpecPath,
+			"latest_plan_path": latestPlanPath,
 		})
 	})
 	mux.HandleFunc("/api/context/docs/", func(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +276,26 @@ func listSessionReports(root string) ([]runlog.SessionReport, error) {
 		reports = append(reports, report)
 	}
 	return reports, nil
+}
+
+func latestDocPath(root, relDir string) string {
+	dir := filepath.Join(root, relDir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	var names []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		names = append(names, entry.Name())
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Join(relDir, names[len(names)-1]))
 }
 
 func findTask(items []tasks.Task, taskID string) (tasks.Task, bool) {

@@ -103,11 +103,21 @@ function renderTasks(run) {
 
 async function renderSession(sessionID) {
   if (!sessionID) {
-    setText('session-detail', 'No session');
+    document.getElementById('session-detail').textContent = 'No session';
     return;
   }
   const report = await fetchJSON(`/api/sessions/${sessionID}`);
-  document.getElementById('session-detail').textContent = JSON.stringify(report, null, 2);
+  const session = report.session || report.Session;
+  const runtime = report.runtime || report.Runtime || {};
+  const turns = session.turns || session.Turns || [];
+  const container = document.getElementById('session-detail');
+  container.innerHTML = `
+    <div class="detail-card"><strong>ID</strong><div>${session.id || session.ID}</div></div>
+    <div class="detail-card"><strong>Label</strong><div>${session.label || session.Label || ''}</div></div>
+    <div class="detail-card"><strong>Runtime</strong><div>model=${runtime.model || runtime.Model || ''} sandbox=${runtime.sandbox || runtime.Sandbox || ''} approval=${runtime.approval || runtime.Approval || ''}</div></div>
+    <div class="detail-card"><strong>Summary</strong><pre>${session.lastSummary || session.LastSummary || ''}</pre></div>
+    <div class="detail-card"><strong>Turns</strong><pre>${JSON.stringify(turns, null, 2)}</pre></div>
+  `;
 }
 
 function renderSessions(reports, selectedID) {
@@ -155,6 +165,12 @@ function renderContext(context) {
   });
 
   setText('context-detail', items[0].value);
+  const highlights = document.getElementById('context-highlights');
+  highlights.innerHTML = `
+    <div class="detail-card"><strong>Latest spec</strong><div>${context.latest_spec_path || '—'}</div></div>
+    <div class="detail-card"><strong>Latest plan</strong><div>${context.latest_plan_path || '—'}</div></div>
+    <div class="detail-card"><strong>AGENTS visible</strong><div>${context.agents ? 'yes' : 'no'}</div></div>
+  `;
 
   const docsList = document.getElementById('docs-list');
   docsList.innerHTML = '';

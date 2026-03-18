@@ -217,6 +217,25 @@ pre {
   max-height: 520px;
 }
 
+.detail-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-card {
+  background: #0b1220;
+  border: 1px solid #263041;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.detail-card strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #93c5fd;
+}
+
 @media (max-width: 1100px) {
   .shell,
   .summary-grid,

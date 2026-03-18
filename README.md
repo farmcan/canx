@@ -56,16 +56,13 @@ For larger projects, this makes AI-assisted development slower and less reliable
 ## Reference docs
 
 - Start here: `START_HERE.md`
+- Docs index: `docs/README.md`
 - Product intent: `docs/2026-03-18-product-intent.md`
-- Requirements: `docs/2026-03-17-requirements.md`
-- MVP design: `docs/2026-03-17-canx-mvp-design.md`
-- MVP plan history: `docs/2026-03-17-canx-mvp-plan.md`
-- Current practical plan: `docs/2026-03-18-usable-platform-plan.md`
-- Current review/status: `docs/review.md`
-- Landscape analysis: `docs/2026-03-18-landscape-analysis.md`
+- Runbook: `docs/runbook.md`
+- Testing methods: `docs/testing-methods.md`
+- Prompt templates: `docs/prompt-templates.md`
 - Evaluation landscape: `docs/research/2026-03-18-evaluation-landscape.md`
 - Codex/OpenClaw/Ralph/ACP notes: `docs/research/2026-03-18-codex-openclaw-ralph-acp.md`
-- Research landscape: `docs/research/2026-03-17-orchestrator-landscape.md`
 
 ## Initial principle
 
@@ -84,6 +81,9 @@ If you are a fresh agent session, read these files first:
 1. `START_HERE.md`
 2. `README.md`
 3. `AGENTS.md`
+4. `docs/README.md`
+5. `docs/runbook.md`
+6. `docs/prompt-templates.md`
 
 ## Run the MVP
 

@@ -79,3 +79,61 @@ func TestExecRunnerWithRealCodexIfAvailable(t *testing.T) {
 		t.Fatalf("expected CANX_OK in output, got: %q", result.Output)
 	}
 }
+
+func TestParseExecOutputExtractsRuntimeAndFinalMessage(t *testing.T) {
+	t.Parallel()
+
+	raw := `OpenAI Codex v0.111.0 (research preview)
+--------
+workdir: /tmp/repo
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 019d01c7-404e-7cd2-91e5-b421f62c6d09
+--------
+user
+Goal: test
+
+codex
+- first point
+- second point [canx:stop]
+tokens used
+3,971
+`
+
+	result := parseExecOutput(raw)
+	if got, want := result.Runtime.Model, "gpt-5.4"; got != want {
+		t.Fatalf("model = %q, want %q", got, want)
+	}
+	if got, want := result.Runtime.Sandbox, "read-only"; got != want {
+		t.Fatalf("sandbox = %q, want %q", got, want)
+	}
+	if strings.Contains(result.Output, "OpenAI Codex") {
+		t.Fatalf("expected cleaned output, got raw banner: %q", result.Output)
+	}
+	if !strings.Contains(result.Output, "[canx:stop]") {
+		t.Fatalf("expected final output to keep stop marker: %q", result.Output)
+	}
+}
+
+func TestParseExecOutputDropsExecTraceNoise(t *testing.T) {
+	t.Parallel()
+
+	raw := `codex
+先检查仓库。
+exec
+/bin/zsh -lc "sed -n '1,200p' README.md" in /tmp/repo
+真正结论 [canx:stop]
+`
+
+	result := parseExecOutput(raw)
+	if strings.Contains(result.Output, "/bin/zsh -lc") {
+		t.Fatalf("expected exec trace to be removed: %q", result.Output)
+	}
+	if !strings.Contains(result.Output, "真正结论 [canx:stop]") {
+		t.Fatalf("expected conclusion to remain: %q", result.Output)
+	}
+}

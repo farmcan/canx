@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/farmcan/canx/internal/codex"
 	"github.com/farmcan/canx/internal/sessions"
 	"github.com/farmcan/canx/internal/tasks"
 )
 
 type SessionReport struct {
 	Session   sessions.Session `json:"session"`
+	Runtime   codex.Runtime    `json:"runtime,omitempty"`
 	Decision  string           `json:"decision"`
 	Reason    string           `json:"reason"`
 	TurnCount int              `json:"turn_count"`

@@ -4,12 +4,11 @@ If you are a fresh agent session, read these files in order:
 
 1. `README.md`
 2. `AGENTS.md`
-3. `docs/2026-03-18-product-intent.md`
-4. `docs/2026-03-17-requirements.md`
-5. `docs/2026-03-17-canx-mvp-design.md`
-6. `docs/2026-03-18-usable-platform-plan.md`
-7. `docs/research/2026-03-18-evaluation-landscape.md`
-8. `docs/review.md`
+3. `docs/README.md`
+4. `docs/2026-03-18-product-intent.md`
+5. `docs/runbook.md`
+6. `docs/testing-methods.md`
+7. `docs/prompt-templates.md`
 
 ## Repository in one paragraph
 
@@ -44,9 +43,13 @@ Then continue with:
 
 Optional background reading:
 
+- `docs/research/`
+- `docs/2026-03-17-requirements.md`
+- `docs/2026-03-17-canx-mvp-design.md`
+- `docs/2026-03-18-usable-platform-plan.md`
 - `docs/2026-03-17-canx-mvp-plan.md`
 - `docs/2026-03-18-landscape-analysis.md`
-- `docs/research/`
+- `docs/review.md`
 
 ## Rules of engagement
 

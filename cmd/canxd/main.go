@@ -128,6 +128,7 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 	}
 	if _, err := runlog.WriteSessionReport(absRepoPath, runlog.SessionReport{
 		Session:   outcome.Session,
+		Runtime:   latestRuntime(outcome),
 		Decision:  outcome.Decision.Action,
 		Reason:    outcome.Decision.Reason,
 		TurnCount: len(outcome.Turns),
@@ -137,7 +138,7 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 	}
 
 	return fmt.Sprintf(
-		"canx decision=%s reason=%s turns=%d tasks=%d session=%s workspace=%s docs=%d",
+		"canx decision=%s reason=%s turns=%d tasks=%d session=%s workspace=%s docs=%d model=%s sandbox=%s approval=%s runtime_session=%s",
 		outcome.Decision.Action,
 		outcome.Decision.Reason,
 		len(outcome.Turns),
@@ -145,7 +146,18 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 		outcome.Session.ID,
 		absRepoPath,
 		len(repo.Docs),
+		latestRuntime(outcome).Model,
+		latestRuntime(outcome).Sandbox,
+		latestRuntime(outcome).Approval,
+		latestRuntime(outcome).SessionID,
 	), nil
+}
+
+func latestRuntime(outcome loop.Outcome) codex.Runtime {
+	if len(outcome.Turns) == 0 {
+		return codex.Runtime{}
+	}
+	return outcome.Turns[len(outcome.Turns)-1].RunnerResult.Runtime
 }
 
 func selectPlanner(opts Options, workdir string) (tasks.Planner, error) {

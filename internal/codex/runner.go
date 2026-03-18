@@ -27,6 +27,15 @@ func (r Request) Validate() error {
 type Result struct {
 	Output   string
 	ExitCode int
+	Runtime  Runtime
+}
+
+type Runtime struct {
+	Model     string `json:"model,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	Approval  string `json:"approval,omitempty"`
+	Sandbox   string `json:"sandbox,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type RunError struct {

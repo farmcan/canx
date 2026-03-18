@@ -1,15 +1,15 @@
-{"Time":"2026-03-19T00:17:10.544872+08:00","Action":"start","Package":"github.com/farmcan/canx/evals/agentic"}
-{"Time":"2026-03-19T00:17:11.980984+08:00","Action":"run","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite"}
-{"Time":"2026-03-19T00:17:11.981085+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"=== RUN   TestAgenticQuickSuite\n"}
-{"Time":"2026-03-19T00:17:11.981121+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"=== PAUSE TestAgenticQuickSuite\n"}
-{"Time":"2026-03-19T00:17:11.981126+08:00","Action":"pause","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite"}
-{"Time":"2026-03-19T00:17:11.98113+08:00","Action":"cont","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite"}
-{"Time":"2026-03-19T00:17:11.981133+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"=== CONT  TestAgenticQuickSuite\n"}
-{"Time":"2026-03-19T00:17:12.013163+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"    suite_test.go:61: {\"name\":\"stop_signal\",\"success\":true,\"decision\":\"stop\",\"reason\":\"runner requested stop\",\"turns\":1,\"tasks\":1,\"done_tasks\":1,\"duration_ms\":0,\"prompt_docs\":1,\"multi_task\":false}\n"}
-{"Time":"2026-03-19T00:17:12.013199+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"    suite_test.go:61: {\"name\":\"validation_feedback\",\"success\":true,\"decision\":\"stop\",\"reason\":\"runner requested stop\",\"turns\":2,\"tasks\":1,\"done_tasks\":1,\"duration_ms\":28,\"prompt_docs\":1,\"multi_task\":false}\n"}
-{"Time":"2026-03-19T00:17:12.013207+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"    suite_test.go:61: {\"name\":\"multi_task_sequence\",\"success\":true,\"decision\":\"stop\",\"reason\":\"runner requested stop\",\"turns\":2,\"tasks\":2,\"done_tasks\":2,\"duration_ms\":0,\"prompt_docs\":1,\"multi_task\":true}\n"}
-{"Time":"2026-03-19T00:17:12.014278+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"--- PASS: TestAgenticQuickSuite (0.03s)\n"}
-{"Time":"2026-03-19T00:17:12.014288+08:00","Action":"pass","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Elapsed":0.03}
-{"Time":"2026-03-19T00:17:12.014301+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Output":"PASS\n"}
-{"Time":"2026-03-19T00:17:12.014872+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Output":"ok  \tgithub.com/farmcan/canx/evals/agentic\t1.470s\n"}
-{"Time":"2026-03-19T00:17:12.017299+08:00","Action":"pass","Package":"github.com/farmcan/canx/evals/agentic","Elapsed":1.472}
+{"Time":"2026-03-19T00:42:16.481547+08:00","Action":"start","Package":"github.com/farmcan/canx/evals/agentic"}
+{"Time":"2026-03-19T00:42:16.8822+08:00","Action":"run","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite"}
+{"Time":"2026-03-19T00:42:16.882439+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"=== RUN   TestAgenticQuickSuite\n"}
+{"Time":"2026-03-19T00:42:16.882456+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"=== PAUSE TestAgenticQuickSuite\n"}
+{"Time":"2026-03-19T00:42:16.882463+08:00","Action":"pause","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite"}
+{"Time":"2026-03-19T00:42:16.882469+08:00","Action":"cont","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite"}
+{"Time":"2026-03-19T00:42:16.882474+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"=== CONT  TestAgenticQuickSuite\n"}
+{"Time":"2026-03-19T00:42:16.904144+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"    suite_test.go:61: {\"name\":\"stop_signal\",\"success\":true,\"decision\":\"stop\",\"reason\":\"runner requested stop\",\"turns\":1,\"tasks\":1,\"done_tasks\":1,\"duration_ms\":0,\"prompt_docs\":1,\"multi_task\":false}\n"}
+{"Time":"2026-03-19T00:42:16.904181+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"    suite_test.go:61: {\"name\":\"validation_feedback\",\"success\":true,\"decision\":\"stop\",\"reason\":\"runner requested stop\",\"turns\":2,\"tasks\":1,\"done_tasks\":1,\"duration_ms\":17,\"prompt_docs\":1,\"multi_task\":false}\n"}
+{"Time":"2026-03-19T00:42:16.904193+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"    suite_test.go:61: {\"name\":\"multi_task_sequence\",\"success\":true,\"decision\":\"stop\",\"reason\":\"runner requested stop\",\"turns\":2,\"tasks\":2,\"done_tasks\":2,\"duration_ms\":0,\"prompt_docs\":1,\"multi_task\":true}\n"}
+{"Time":"2026-03-19T00:42:16.905241+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Output":"--- PASS: TestAgenticQuickSuite (0.02s)\n"}
+{"Time":"2026-03-19T00:42:16.90525+08:00","Action":"pass","Package":"github.com/farmcan/canx/evals/agentic","Test":"TestAgenticQuickSuite","Elapsed":0.02}
+{"Time":"2026-03-19T00:42:16.905458+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Output":"PASS\n"}
+{"Time":"2026-03-19T00:42:16.90565+08:00","Action":"output","Package":"github.com/farmcan/canx/evals/agentic","Output":"ok  \tgithub.com/farmcan/canx/evals/agentic\t0.424s\n"}
+{"Time":"2026-03-19T00:42:16.908156+08:00","Action":"pass","Package":"github.com/farmcan/canx/evals/agentic","Elapsed":0.427}

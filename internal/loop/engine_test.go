@@ -38,6 +38,12 @@ func TestEngineStopsWhenValidationPasses(t *testing.T) {
 	if outcome.Session.ID == "" {
 		t.Fatal("expected session to be created")
 	}
+	if got, want := len(outcome.Tasks), 1; got != want {
+		t.Fatalf("tasks len = %d, want %d", got, want)
+	}
+	if got, want := outcome.Tasks[0].Status, "done"; got != want {
+		t.Fatalf("task status = %q, want %q", got, want)
+	}
 }
 
 func TestEngineContinuesUntilMaxTurnsWhenValidationFails(t *testing.T) {

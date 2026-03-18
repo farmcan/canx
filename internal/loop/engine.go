@@ -12,6 +12,7 @@ import (
 	"github.com/farmcan/canx/internal/review"
 	"github.com/farmcan/canx/internal/runlog"
 	"github.com/farmcan/canx/internal/sessions"
+	"github.com/farmcan/canx/internal/tasks"
 	"github.com/farmcan/canx/internal/workspace"
 )
 
@@ -24,10 +25,12 @@ type Engine struct {
 	Workdir     string
 	TurnTimeout time.Duration
 	Sessions    *sessions.Registry
+	Planner     tasks.Planner
 }
 
 type Outcome struct {
 	Session  sessions.Session
+	Tasks    []tasks.Task
 	Turns    []Turn
 	Decision Decision
 	Logs     []runlog.Entry
@@ -56,6 +59,9 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 	if e.Sessions == nil {
 		e.Sessions = sessions.NewRegistry()
 	}
+	if e.Planner == nil {
+		e.Planner = tasks.StaticPlanner{}
+	}
 
 	session, err := e.Sessions.Spawn(sessions.SpawnRequest{
 		Label: "main",
@@ -66,7 +72,15 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		return Outcome{}, err
 	}
 
-	outcome := Outcome{Session: session}
+	plannedTasks, err := e.Planner.Plan(cfg.Goal)
+	if err != nil {
+		return Outcome{}, err
+	}
+
+	outcome := Outcome{
+		Session: session,
+		Tasks:   plannedTasks,
+	}
 	for turn := 1; turn <= cfg.MaxTurns; turn++ {
 		turnCtx := ctx
 		cancel := func() {}
@@ -74,7 +88,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			turnCtx, cancel = context.WithTimeout(ctx, e.TurnTimeout)
 		}
 
-		prompt := buildPrompt(cfg.Goal, repo, outcome.Turns)
+		prompt := buildPrompt(cfg.Goal, repo, outcome.Tasks, outcome.Turns)
 		result, err := e.Runner.Run(turnCtx, codex.Request{
 			Prompt:   prompt,
 			Workdir:  e.Workdir,
@@ -109,6 +123,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			return Outcome{}, err
 		}
 		outcome.Session = session
+		outcome.Tasks = updateTaskStatuses(outcome.Tasks, reviewResult.Approved)
 
 		switch {
 		case strings.Contains(result.Output, stopMarker):
@@ -130,10 +145,22 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 	return outcome, nil
 }
 
-func buildPrompt(goal string, repo workspace.Context, turns []Turn) string {
+func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task, turns []Turn) string {
 	var builder strings.Builder
 	builder.WriteString("Goal:\n")
 	builder.WriteString(goal)
+	if len(plannedTasks) > 0 {
+		builder.WriteString("\n\nTasks:\n")
+		for _, task := range plannedTasks {
+			builder.WriteString("- [")
+			builder.WriteString(task.Status)
+			builder.WriteString("] ")
+			builder.WriteString(task.Title)
+			builder.WriteString(": ")
+			builder.WriteString(task.Goal)
+			builder.WriteString("\n")
+		}
+	}
 	builder.WriteString("\n\nRepository context:\n")
 	builder.WriteString(repo.Readme)
 	if repo.Agents != "" {
@@ -147,6 +174,21 @@ func buildPrompt(goal string, repo workspace.Context, turns []Turn) string {
 	}
 	builder.WriteString("\n\nRespond with progress, and include [canx:stop] when the task is complete.")
 	return builder.String()
+}
+
+func updateTaskStatuses(items []tasks.Task, done bool) []tasks.Task {
+	if len(items) == 0 {
+		return items
+	}
+
+	next := make([]tasks.Task, len(items))
+	copy(next, items)
+	if done {
+		next[0].Status = tasks.StatusDone
+	} else {
+		next[0].Status = tasks.StatusInProgress
+	}
+	return next
 }
 
 func runValidation(ctx context.Context, workdir string, commands []string) bool {

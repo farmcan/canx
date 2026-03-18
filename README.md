@@ -106,6 +106,7 @@ go run ./cmd/canxd -repo . sessions show <session-id>
 The current local MVP now includes:
 
 - Ralph-lite bounded loop control
+- lightweight task planning wired into the live engine
 - Codex runner abstraction
 - lightweight session registry inspired by ACP/session models
 - fast smoke evals

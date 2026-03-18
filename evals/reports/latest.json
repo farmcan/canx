@@ -1,0 +1,40 @@
+{
+  "results": [
+    {
+      "name": "stop_signal",
+      "success": true,
+      "decision": "stop",
+      "reason": "runner requested stop",
+      "turns": 1,
+      "tasks": 1,
+      "done_tasks": 1,
+      "duration_ms": 0,
+      "prompt_docs": 1,
+      "multi_task": false
+    },
+    {
+      "name": "validation_feedback",
+      "success": true,
+      "decision": "stop",
+      "reason": "runner requested stop",
+      "turns": 2,
+      "tasks": 1,
+      "done_tasks": 1,
+      "duration_ms": 28,
+      "prompt_docs": 1,
+      "multi_task": false
+    },
+    {
+      "name": "multi_task_sequence",
+      "success": true,
+      "decision": "stop",
+      "reason": "runner requested stop",
+      "turns": 2,
+      "tasks": 2,
+      "done_tasks": 2,
+      "duration_ms": 0,
+      "prompt_docs": 1,
+      "multi_task": true
+    }
+  ]
+}

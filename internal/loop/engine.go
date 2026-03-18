@@ -17,6 +17,7 @@ import (
 )
 
 const stopMarker = "[canx:stop]"
+const escalateMarker = "[canx:escalate]"
 
 var ErrMissingRunner = errors.New("missing runner")
 
@@ -99,15 +100,23 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		}
 
 		prompt, docsUsed := buildPrompt(cfg.Goal, repo, outcome.Tasks, outcome.Turns, activeIndex)
-		outcome.PromptDocsUsed = docsUsed
+		if outcome.PromptDocsUsed == 0 {
+			outcome.PromptDocsUsed = docsUsed
+		}
 		result, err := e.Runner.Run(turnCtx, codex.Request{
 			Prompt:   prompt,
 			Workdir:  e.Workdir,
 			MaxTurns: 1,
 		})
 		if err != nil {
-			cancel()
-			return Outcome{}, err
+			// If the runner failed but the output contains a stop or escalate
+			// marker, treat it as a partial success: the worker completed its
+			// reasoning but the process exited non-zero (e.g. read-only sandbox
+			// blocking writes).  Surface the output instead of dropping it.
+			if !strings.Contains(result.Output, stopMarker) && !strings.Contains(result.Output, escalateMarker) {
+				cancel()
+				return Outcome{}, err
+			}
 		}
 
 		validationPassed, validationOutput := runValidation(turnCtx, e.Workdir, cfg.ValidationCommands)
@@ -139,6 +148,11 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		outcome.Tasks = updateTaskStatuses(outcome.Tasks, activeIndex, taskDone)
 
 		switch {
+		case strings.Contains(result.Output, escalateMarker):
+			session, _ = e.Sessions.Close(session.ID)
+			outcome.Session = session
+			outcome.Decision = Decision{Action: ActionEscalate, Reason: "worker requested escalation"}
+			return outcome, nil
 		case strings.Contains(result.Output, stopMarker):
 			if firstActiveTaskIndex(outcome.Tasks) != -1 {
 				continue
@@ -292,6 +306,9 @@ func summarizeTurn(turn int, output string, validated bool) string {
 	summary := strings.TrimSpace(output)
 	if summary == "" {
 		summary = "no output"
+	}
+	if len(summary) > 1000 {
+		summary = summary[:1000] + "...(truncated)"
 	}
 
 	status := "validation_failed"

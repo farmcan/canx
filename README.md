@@ -131,5 +131,12 @@ go test ./evals/agentic -v
 Run the real Codex eval smoke:
 
 ```bash
-CANX_EVAL_REAL=1 go test ./evals/agentic -run TestAgenticRealExecSmokeIfEnabled -v
+make eval-real
+```
+
+Generate local report files:
+
+```bash
+make report
+make report-real
 ```

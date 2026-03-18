@@ -1,0 +1,161 @@
+# CanX Runbook
+
+验证过的命令，复制即可运行。
+
+---
+
+## 前提
+
+```bash
+# 确认 codex 可用
+codex --version
+
+# 确认构建通过
+make build
+
+# 确认所有测试通过
+make test
+```
+
+---
+
+## 测试套件
+
+### 快速单元测试（无需 Codex）
+
+```bash
+make test
+```
+
+### Eval 套件（mock runner，无需 Codex，毫秒级）
+
+```bash
+go test ./evals/agentic/... -v -run TestAgenticQuickSuite
+```
+
+预期输出（三个 eval case 全部 pass）：
+
+```
+{"name":"stop_signal","success":true,"decision":"stop","turns":1,"tasks":1,"done_tasks":1,...}
+{"name":"validation_feedback","success":true,"decision":"stop","turns":2,...}
+{"name":"multi_task_sequence","success":true,"decision":"stop","turns":2,"tasks":2,"done_tasks":2,...}
+```
+
+### 真实 Codex 集成 smoke（需要 Codex，约 20s）
+
+```bash
+CANX_EVAL_REAL=1 go test ./evals/agentic/... -v -run TestAgenticRealExecSmokeIfEnabled -timeout 120s
+```
+
+预期：Codex 收到 prompt，回复 `CANX_REAL_EVAL [canx:stop]`，decision=stop。
+
+---
+
+## CLI 运行
+
+### mock runner（不调用 Codex，用于管道验证）
+
+```bash
+go run ./cmd/canxd -goal "test mock run" -runner mock -repo . -max-turns 1
+```
+
+预期输出：
+
+```
+canx decision=stop reason=runner requested stop turns=1 tasks=1 session=session-xxxx workspace=... docs=10
+```
+
+### 真实 Codex：只读任务（约 30-60s）
+
+```bash
+go run ./cmd/canxd \
+  -goal "Read README.md and summarize what CanX does in 2 sentences. Do not modify any files. Reply with your summary then [canx:stop]." \
+  -runner exec \
+  -repo . \
+  -max-turns 1 \
+  -turn-timeout 90s
+```
+
+### 真实 Codex：带验证的任务（需要 workspace-write 沙箱才能写文件）
+
+```bash
+go run ./cmd/canxd \
+  -goal "YOUR GOAL HERE" \
+  -runner exec \
+  -repo . \
+  -validate "make test" \
+  -max-turns 5 \
+  -turn-timeout 120s \
+  -budget-seconds 600
+```
+
+> **沙箱说明：** Codex 默认以 `read-only` 模式运行，worker 无法修改文件。要允许写入，需要在 `~/.codex/config.toml` 设置 `sandbox = "workspace-write"`，或者在 Codex 配置里开启写权限。只读模式下 worker 会诚实报告无法完成写操作并输出 `[canx:stop]`，CanX 会正确识别这个信号（不会崩溃）。
+
+### 使用 AI 规划器分解任务
+
+```bash
+go run ./cmd/canxd \
+  -goal "YOUR GOAL HERE" \
+  -runner exec \
+  -planner codx \
+  -repo . \
+  -max-turns 5 \
+  -turn-timeout 90s
+```
+
+> `-planner codx` 先调用 Codex 把 goal 分解成 2-5 个子任务，再逐一执行。每个子任务都会显示在 session report 里。
+
+---
+
+## 查看运行历史
+
+```bash
+# 列出所有 session
+go run ./cmd/canxd -repo . sessions list
+
+# 查看某次运行的完整 JSON 报告
+go run ./cmd/canxd -repo . sessions show <session-id>
+```
+
+session-id 是不带 `.json` 后缀的文件名，例如 `session-968503e2847fdad7`。
+
+---
+
+## 已验证的运行结果（2026-03-19）
+
+| 测试 | 结果 | 耗时 | 备注 |
+|---|---|---|---|
+| `TestAgenticQuickSuite` | ✅ PASS | 0.02s | mock，3 个 case 全 pass |
+| `TestAgenticRealExecSmokeIfEnabled` | ✅ PASS | 21.7s | 真实 Codex，decision=stop |
+| CLI mock run | ✅ PASS | 1.6s | decision=stop，docs=10 |
+| CLI 真实 Codex 只读任务 | ✅ PASS | 52s | 正确读 README，输出中文摘要，[canx:stop] |
+| CLI 真实 Codex 写任务（沙箱限制） | ✅ PASS | 140s | worker 诚实报告无法写入，[canx:stop]，CanX 正确识别 |
+| `TestPlannerRealSmokeIfEnabled` | ⚠️ TIMEOUT | 120s | 第二个 goal 触发 Codex 执行真实操作，挂起 |
+
+---
+
+## 已知限制
+
+### Planner eval 超时
+
+```bash
+# 下面这个命令第二个 goal 会超时，暂时不要跑完整三个 goal
+CANX_EVAL_REAL=1 go test ./evals/agentic/... -v -run TestPlannerRealSmokeIfEnabled -timeout 120s
+```
+
+根本原因：`plannerEvalRunner` 没有给 Codex 设置写限制，某些 planning goal 会让 Codex 开始真实执行（编辑文件、跑命令），而不是只输出 JSON 任务列表。单个 goal 可以通过，但三个 goal 顺序跑会在第二个超时。
+
+**修复方向：** `CodxPlanner` 的 runner 应该设置比主 runner 更严格的限制（timeout 短、沙箱只读、明确约束只输出 JSON）。
+
+### 写权限需要配置
+
+Codex 默认 read-only 沙箱，worker 无法修改文件。要让 CanX 真正自托管开发，需要在 Codex 配置里开启 `workspace-write`。
+
+---
+
+## 构建可分发的二进制
+
+```bash
+go build -o canxd ./cmd/canxd
+./canxd -goal "test" -runner mock -repo .
+```

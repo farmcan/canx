@@ -180,6 +180,7 @@ func runEvalCase(t *testing.T, name string, engine loop.Engine, cfg loop.Config)
 		DoneTasks:  doneTasks(outcome.Tasks),
 		DurationMS: time.Since(start).Milliseconds(),
 		PromptDocs: outcome.PromptDocsUsed,
+		MultiTask:  len(outcome.Tasks) > 1,
 	}
 }
 

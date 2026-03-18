@@ -224,6 +224,15 @@ func TestBuildPromptKeepsUTF8ValidWhenTruncatingDocs(t *testing.T) {
 	}
 }
 
+func TestSummarizeTurnTruncatesLongOutput(t *testing.T) {
+	t.Parallel()
+
+	summary := summarizeTurn(1, strings.Repeat("x", 1200), true)
+	if !strings.Contains(summary, "...(truncated)") {
+		t.Fatalf("summary missing truncation marker: %q", summary)
+	}
+}
+
 func TestEngineRunsMultipleTasksInSequence(t *testing.T) {
 	t.Parallel()
 

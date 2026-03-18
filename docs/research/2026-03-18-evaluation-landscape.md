@@ -110,3 +110,13 @@ For the current repository state, the highest-value immediate practice is:
 3. track whether `CodxPlanner` starts producing `2+` tasks more consistently
 
 That is the shortest path to a practical, comparable evaluation loop.
+
+## Current observed result
+
+After fixing `CodxPlanner` JSON extraction to prefer the last valid JSON array in real Codex output, the local real planner smoke improved from effectively `planner_multi_task_rate=0.00` to `planner_multi_task_rate=1.00` on the current three-goal smoke sample.
+
+This is not a claim of general capability. It is a practical sign that:
+
+- the planner prompt is now strong enough to elicit decomposition on simple repository goals
+- the parser is no longer collapsing valid multi-task output into single-task fallback
+- `CanX` now has a measurable planner-quality metric worth tracking over time

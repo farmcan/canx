@@ -25,6 +25,7 @@ type evalResult struct {
 	DoneTasks  int    `json:"done_tasks"`
 	DurationMS int64  `json:"duration_ms"`
 	PromptDocs int    `json:"prompt_docs"`
+	MultiTask  bool   `json:"multi_task"`
 }
 
 func TestAgenticQuickSuite(t *testing.T) {
@@ -99,6 +100,7 @@ func TestAgenticRealExecSmokeIfEnabled(t *testing.T) {
 		DoneTasks:  doneTasks(outcome.Tasks),
 		DurationMS: time.Since(start).Milliseconds(),
 		PromptDocs: outcome.PromptDocsUsed,
+		MultiTask:  len(outcome.Tasks) > 1,
 	}
 	payload, err := json.Marshal(result)
 	if err != nil {
@@ -107,6 +109,49 @@ func TestAgenticRealExecSmokeIfEnabled(t *testing.T) {
 	t.Log(string(payload))
 	if !result.Success {
 		t.Fatalf("real exec eval failed: %+v", result)
+	}
+}
+
+func TestPlannerRealSmokeIfEnabled(t *testing.T) {
+	if os.Getenv("CANX_EVAL_REAL") != "1" {
+		t.Skip("set CANX_EVAL_REAL=1 to run real codex planner eval")
+	}
+	if _, err := execLookPath("codex"); err != nil {
+		t.Skip("codex binary not found")
+	}
+
+	planner := tasks.CodxPlanner{Runner: plannerEvalRunner{}}
+	goals := []string{
+		"Inspect README and test setup, then propose implementation steps.",
+		"Break this repo work into tasks for adding a small CLI flag and tests.",
+		"Plan a TDD change for loop behavior and validation handling.",
+	}
+
+	multiTaskCount := 0
+	for _, goal := range goals {
+		items, err := planner.Plan(context.Background(), goal)
+		if err != nil {
+			t.Fatalf("Plan(%q) error = %v", goal, err)
+		}
+		if len(items) > 1 {
+			multiTaskCount++
+		}
+		payload, err := json.Marshal(evalResult{
+			Name:      "planner_real_smoke",
+			Success:   len(items) > 0,
+			Tasks:     len(items),
+			MultiTask: len(items) > 1,
+		})
+		if err != nil {
+			t.Fatalf("Marshal() error = %v", err)
+		}
+		t.Log(string(payload))
+	}
+
+	rate := float64(multiTaskCount) / float64(len(goals))
+	t.Logf("planner_multi_task_rate=%.2f", rate)
+	if rate == 0 {
+		t.Fatal("expected planner to decompose at least one goal into multiple tasks")
 	}
 }
 
@@ -150,6 +195,20 @@ func doneTasks(items []tasks.Task) int {
 
 type fixedPlanner struct {
 	tasks []tasks.Task
+}
+
+type plannerEvalRunner struct{}
+
+func (plannerEvalRunner) Run(ctx context.Context, prompt string) (string, error) {
+	result, err := codex.NewExecRunner("codex").Run(ctx, codex.Request{
+		Prompt:   prompt,
+		Workdir:  ".",
+		MaxTurns: 1,
+	})
+	if err != nil {
+		return "", err
+	}
+	return result.Output, nil
 }
 
 func (p fixedPlanner) Plan(_ context.Context, _ string) ([]tasks.Task, error) {

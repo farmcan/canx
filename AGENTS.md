@@ -28,6 +28,7 @@ Scope: this file applies to the entire `canx/` repository.
 - `docs/2026-03-17-canx-mvp-plan.md` is historical implementation context, not mandatory first-pass reading.
 - `docs/2026-03-18-usable-platform-plan.md` is the current execution plan for moving from MVP skeleton to usable platform behavior.
 - `docs/2026-03-18-landscape-analysis.md` and `docs/research/` are high-value references when planning MVP2+ changes.
+- `docs/research/2026-03-18-evaluation-landscape.md` is the current baseline for benchmark selection and evaluation philosophy.
 
 ## Engineering rules
 
@@ -49,6 +50,7 @@ Scope: this file applies to the entire `canx/` repository.
 
 - Run `gofmt -w` on changed Go files.
 - Prefer focused tests first, then `go test ./...`.
+- Evaluation work is first-class; prefer `go test ./evals/... -v` when touching loop/planner/runner behavior.
 - Run `go build ./...` before claiming the repository is in a good state.
 - Prefer `make fmt`, `make test`, and `make build` when available.
 

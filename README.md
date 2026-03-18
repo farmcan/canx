@@ -57,6 +57,7 @@ For larger projects, this makes AI-assisted development slower and less reliable
 - Current practical plan: `docs/2026-03-18-usable-platform-plan.md`
 - Current review/status: `docs/review.md`
 - Landscape analysis: `docs/2026-03-18-landscape-analysis.md`
+- Evaluation landscape: `docs/research/2026-03-18-evaluation-landscape.md`
 - Codex/OpenClaw/Ralph/ACP notes: `docs/research/2026-03-18-codex-openclaw-ralph-acp.md`
 - Research landscape: `docs/research/2026-03-17-orchestrator-landscape.md`
 
@@ -119,4 +120,16 @@ Run the lightweight smoke suite:
 
 ```bash
 go test ./evals/smoke -v
+```
+
+Run the local agentic eval suite:
+
+```bash
+go test ./evals/agentic -v
+```
+
+Run the real Codex eval smoke:
+
+```bash
+CANX_EVAL_REAL=1 go test ./evals/agentic -run TestAgenticRealExecSmokeIfEnabled -v
 ```

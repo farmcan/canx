@@ -8,7 +8,8 @@ If you are a fresh agent session, read these files in order:
 4. `docs/2026-03-17-requirements.md`
 5. `docs/2026-03-17-canx-mvp-design.md`
 6. `docs/2026-03-18-usable-platform-plan.md`
-7. `docs/review.md`
+7. `docs/research/2026-03-18-evaluation-landscape.md`
+8. `docs/review.md`
 
 ## Repository in one paragraph
 
@@ -17,6 +18,8 @@ If you are a fresh agent session, read these files in order:
 ## Current priority
 
 Build the local single-machine Ralph-lite MVP.
+
+Evaluation and fast iteration are top priority. Favor changes that improve measurable loop quality over extra abstraction.
 
 ## Current implementation target
 

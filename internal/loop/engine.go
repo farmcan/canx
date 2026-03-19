@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os/exec"
 	"strconv"
@@ -51,6 +52,11 @@ type Turn struct {
 	ValidationPassed bool
 	ValidationOutput string
 	Review           review.Result
+}
+
+type stopPayload struct {
+	Summary      string   `json:"summary"`
+	FilesChanged []string `json:"files_changed"`
 }
 
 func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Outcome, error) {
@@ -167,8 +173,13 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			return Outcome{}, err
 		}
 		outcome.Session = session
-		taskDone := reviewResult.Approved || strings.Contains(result.Output, stopMarker)
+		payload := parseStopPayload(result.Output)
+		taskDone := reviewResult.Approved || hasStopSignal(result.Output)
 		outcome.Tasks = updateTaskStatuses(outcome.Tasks, activeIndex, taskDone)
+		if payload != nil {
+			outcome.Tasks[activeIndex].Summary = payload.Summary
+			outcome.Tasks[activeIndex].FilesChanged = payload.FilesChanged
+		}
 		if err := e.emitEvent(runlog.Event{
 			Kind:      "turn_completed",
 			SessionID: session.ID,
@@ -205,7 +216,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			outcome.Session = session
 			outcome.Decision = Decision{Action: ActionEscalate, Reason: "worker requested escalation"}
 			return outcome, nil
-		case strings.Contains(result.Output, stopMarker):
+		case hasStopSignal(result.Output):
 			if firstActiveTaskIndex(outcome.Tasks) != -1 {
 				continue
 			}
@@ -278,6 +289,25 @@ func buildPrompt(role, goal string, repo workspace.Context, plannedTasks []tasks
 			builder.WriteString(task.Goal)
 			builder.WriteString("\n")
 		}
+
+		completed := completedTasks(plannedTasks)
+		if len(completed) > 0 {
+			builder.WriteString("\nCompleted tasks:\n")
+			for _, task := range completed {
+				builder.WriteString("- ")
+				builder.WriteString(task.Title)
+				if task.Summary != "" {
+					builder.WriteString(": ")
+					builder.WriteString(task.Summary)
+				}
+				if len(task.FilesChanged) > 0 {
+					builder.WriteString(" (files: ")
+					builder.WriteString(strings.Join(task.FilesChanged, ", "))
+					builder.WriteString(")")
+				}
+				builder.WriteString("\n")
+			}
+		}
 	}
 	builder.WriteString("\n\nRepository context:\n")
 	builder.WriteString(repo.Readme)
@@ -343,6 +373,16 @@ func updateTaskStatuses(items []tasks.Task, activeIndex int, done bool) []tasks.
 	return next
 }
 
+func completedTasks(items []tasks.Task) []tasks.Task {
+	var completed []tasks.Task
+	for _, item := range items {
+		if item.Status == tasks.StatusDone {
+			completed = append(completed, item)
+		}
+	}
+	return completed
+}
+
 func runValidation(ctx context.Context, workdir string, commands []string) (bool, string) {
 	if len(commands) == 0 {
 		return false, ""
@@ -390,6 +430,28 @@ func summarizeTurn(turn int, output string, validated bool) string {
 	}
 
 	return "turn=" + strconv.Itoa(turn) + " " + status + " output=" + summary
+}
+
+func hasStopSignal(output string) bool {
+	return strings.Contains(output, stopMarker) || strings.Contains(output, "[canx:stop:")
+}
+
+func parseStopPayload(output string) *stopPayload {
+	start := strings.Index(output, "[canx:stop:")
+	if start == -1 {
+		return nil
+	}
+	body := output[start+len("[canx:stop:"):]
+	end := strings.LastIndex(body, "]")
+	if end == -1 {
+		return nil
+	}
+	body = body[:end]
+	var payload stopPayload
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		return nil
+	}
+	return &payload
 }
 
 func summarizePrompt(prompt string) string {

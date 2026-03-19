@@ -21,6 +21,7 @@ type Task struct {
 	Status             string
 	Owner              string
 	FilesInScope       []string
+	FilesChanged       []string
 	BlockedBy          []string
 	ValidationCommands []string
 	Summary            string

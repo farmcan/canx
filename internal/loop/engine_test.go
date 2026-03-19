@@ -112,6 +112,32 @@ func TestEngineStopsOnStopMarker(t *testing.T) {
 	}
 }
 
+func TestEngineParsesStructuredStopPayloadIntoTask(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner: &fakeRunner{
+			results: []codex.Result{{Output: `done [canx:stop:{"summary":"implemented healthz","files_changed":["cmd/tradexd/main.go","internal/httpapi/health.go"]}]`}},
+		},
+		Workdir: ".",
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:     "ship mvp",
+		MaxTurns: 1,
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if got, want := outcome.Tasks[0].Summary, "implemented healthz"; got != want {
+		t.Fatalf("task summary = %q, want %q", got, want)
+	}
+	if got, want := len(outcome.Tasks[0].FilesChanged), 2; got != want {
+		t.Fatalf("files_changed len = %d, want %d", got, want)
+	}
+}
+
 func TestEngineHonorsTurnTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -305,6 +331,28 @@ func TestEngineRunsMultipleTasksInSequence(t *testing.T) {
 	}
 	if got, want := len(outcome.Turns), 2; got != want {
 		t.Fatalf("turns = %d, want %d", got, want)
+	}
+}
+
+func TestBuildPromptIncludesCompletedTaskSummaries(t *testing.T) {
+	t.Parallel()
+
+	prompt, _ := buildPrompt(promptRoleWorker, "ship mvp", workspace.Context{
+		Root:   ".",
+		Readme: "readme",
+	}, []tasks.Task{
+		{ID: "t1", Title: "Task 1", Goal: "first", Status: tasks.StatusDone, Summary: "implemented healthz", FilesChanged: []string{"cmd/tradexd/main.go"}},
+		{ID: "t2", Title: "Task 2", Goal: "second", Status: tasks.StatusPending},
+	}, nil, 1)
+
+	if !strings.Contains(prompt, "Completed tasks:") {
+		t.Fatalf("prompt missing completed tasks section: %q", prompt)
+	}
+	if !strings.Contains(prompt, "implemented healthz") {
+		t.Fatalf("prompt missing completed task summary: %q", prompt)
+	}
+	if !strings.Contains(prompt, "cmd/tradexd/main.go") {
+		t.Fatalf("prompt missing files_changed: %q", prompt)
 	}
 }
 

@@ -27,6 +27,7 @@ type Engine struct {
 	TurnTimeout time.Duration
 	Sessions    *sessions.Registry
 	Planner     tasks.Planner
+	EventSink   func(runlog.Event) error
 }
 
 type Outcome struct {
@@ -83,6 +84,24 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 	outcome := Outcome{
 		Session: session,
 		Tasks:   plannedTasks,
+	}
+	if err := e.emitEvent(runlog.Event{
+		Kind:      "session_started",
+		SessionID: session.ID,
+		Timestamp: session.CreatedAt,
+		Runtime: map[string]any{
+			"mode": session.Mode,
+			"cwd":  session.CWD,
+		},
+	}); err != nil {
+		return Outcome{}, err
+	}
+	if err := e.emitEvent(runlog.Event{
+		Kind:      "task_state",
+		SessionID: session.ID,
+		Tasks:     cloneTasks(outcome.Tasks),
+	}); err != nil {
+		return Outcome{}, err
 	}
 	for turn := 1; turn <= cfg.MaxTurns; turn++ {
 		activeIndex := firstActiveTaskIndex(outcome.Tasks)
@@ -145,6 +164,34 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		outcome.Session = session
 		taskDone := reviewResult.Approved || strings.Contains(result.Output, stopMarker)
 		outcome.Tasks = updateTaskStatuses(outcome.Tasks, activeIndex, taskDone)
+		if err := e.emitEvent(runlog.Event{
+			Kind:      "turn_completed",
+			SessionID: session.ID,
+			TaskID:    outcome.Tasks[activeIndex].ID,
+			Turn:      turn,
+			Message:   summarizePrompt(prompt),
+			Output:    result.Output,
+			Validated: validationPassed,
+			Validation: validationOutput,
+			Runtime: map[string]any{
+				"model":      result.Runtime.Model,
+				"provider":   result.Runtime.Provider,
+				"sandbox":    result.Runtime.Sandbox,
+				"approval":   result.Runtime.Approval,
+				"session_id": result.Runtime.SessionID,
+			},
+		}); err != nil {
+			return Outcome{}, err
+		}
+		if err := e.emitEvent(runlog.Event{
+			Kind:      "task_state",
+			SessionID: session.ID,
+			TaskID:    outcome.Tasks[activeIndex].ID,
+			Message:   outcome.Tasks[activeIndex].Title,
+			Tasks:     cloneTasks(outcome.Tasks),
+		}); err != nil {
+			return Outcome{}, err
+		}
 
 		switch {
 		case strings.Contains(result.Output, escalateMarker):
@@ -177,6 +224,22 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 	outcome.Session = session
 	outcome.Decision = Decision{Action: ActionEscalate, Reason: "max turns reached"}
 	return outcome, nil
+}
+
+func (e Engine) emitEvent(event runlog.Event) error {
+	if e.EventSink == nil {
+		return nil
+	}
+	return e.EventSink(event)
+}
+
+func cloneTasks(items []tasks.Task) []tasks.Task {
+	if len(items) == 0 {
+		return nil
+	}
+	next := make([]tasks.Task, len(items))
+	copy(next, items)
+	return next
 }
 
 const promptDocsBudget = 4000
@@ -318,6 +381,14 @@ func summarizeTurn(turn int, output string, validated bool) string {
 	}
 
 	return "turn=" + strconv.Itoa(turn) + " " + status + " output=" + summary
+}
+
+func summarizePrompt(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	if len(prompt) > 400 {
+		return prompt[:400] + "...(truncated)"
+	}
+	return prompt
 }
 
 func formatValidationFailure(command, output string) string {

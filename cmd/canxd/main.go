@@ -151,6 +151,12 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 		Planner:     planner,
 		Workdir:     absRepoPath,
 		TurnTimeout: opts.TurnTimeout,
+		EventSink: func(event runlog.Event) error {
+			if err := eventStore.AppendEvent(runID, event); err != nil {
+				return err
+			}
+			return updateRunProgress(eventStore, initialRun, runID, cfg.Goal, absRepoPath, event)
+		},
 	}
 
 	outcome, err := engine.Run(context.Background(), cfg, repo)
@@ -312,58 +318,14 @@ func inspectSessions(opts Options, args []string) (string, error) {
 }
 
 func outcomeEvents(runID string, outcome loop.Outcome) []runlog.Event {
-	events := []runlog.Event{
-		{
-			RunID:     runID,
-			Kind:      "session_started",
-			SessionID: outcome.Session.ID,
-			Timestamp: outcome.Session.CreatedAt,
-			Runtime: map[string]any{
-				"mode": outcome.Session.Mode,
-				"cwd":  outcome.Session.CWD,
-			},
-		},
-	}
-	for _, task := range outcome.Tasks {
-		events = append(events, runlog.Event{
-			RunID:     runID,
-			Kind:      "task_state",
-			SessionID: outcome.Session.ID,
-			TaskID:    task.ID,
-			Message:   task.Title,
-			Tasks:     []tasks.Task{task},
-		})
-	}
-	for _, turn := range outcome.Turns {
-		events = append(events,
-			runlog.Event{
-				RunID:      runID,
-				Kind:       "turn_completed",
-				SessionID:  outcome.Session.ID,
-				Turn:       turn.Number,
-				Message:    summarizePrompt(turn.Prompt),
-				Output:     turn.RunnerResult.Output,
-				Validated:  turn.ValidationPassed,
-				Validation: turn.ValidationOutput,
-				Runtime: map[string]any{
-					"model":      turn.RunnerResult.Runtime.Model,
-					"provider":   turn.RunnerResult.Runtime.Provider,
-					"sandbox":    turn.RunnerResult.Runtime.Sandbox,
-					"approval":   turn.RunnerResult.Runtime.Approval,
-					"session_id": turn.RunnerResult.Runtime.SessionID,
-				},
-			},
-		)
-	}
-	events = append(events, runlog.Event{
+	return []runlog.Event{{
 		RunID:     runID,
 		Kind:      "run_finished",
 		SessionID: outcome.Session.ID,
 		Decision:  string(outcome.Decision.Action),
 		Reason:    outcome.Decision.Reason,
 		Tasks:     outcome.Tasks,
-	})
-	return events
+	}}
 }
 
 func summarizePrompt(prompt string) string {
@@ -372,6 +334,32 @@ func summarizePrompt(prompt string) string {
 		return prompt[:400] + "...(truncated)"
 	}
 	return prompt
+}
+
+func updateRunProgress(store runlog.EventStore, initial runlog.RunRecord, runID, goal, repoRoot string, event runlog.Event) error {
+	record, err := store.LoadRun(runID)
+	if err != nil {
+		record = initial
+	}
+	record.ID = runID
+	record.Goal = goal
+	record.RepoRoot = repoRoot
+	record.Status = "running"
+	record.UpdatedAt = time.Now()
+	if record.StartedAt.IsZero() {
+		record.StartedAt = initial.StartedAt
+	}
+	if event.SessionID != "" {
+		record.SessionID = event.SessionID
+	}
+	if event.Turn > record.TurnCount {
+		record.TurnCount = event.Turn
+	}
+	if len(event.Tasks) > 0 {
+		record.Tasks = event.Tasks
+		record.TaskCount = len(event.Tasks)
+	}
+	return store.SaveRun(record)
 }
 
 func init() {

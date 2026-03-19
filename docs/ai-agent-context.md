@@ -82,13 +82,13 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 
 ### 当前缺口说明
 
-`EventStore`、`Rooms`、`server.go`（Dashboard）已在代码里，但有一个关键缺口：**事件是跑完之后批量写入的**（`outcomeEvents` 在 `engine.Run` 返回后调用），不是每轮实时写。Dashboard 在运行过程中看到的是 `"running"` 状态挂着直到结束，对于跑 5 分钟的任务完全是黑盒。
+`EventStore`、`Rooms`、`server.go`（Dashboard）已在代码里，`P0 实时事件流` 已完成：`Engine` 每轮会即时写入 `session_started`、`task_state`、`turn_completed`，并同步刷新 `run.json`。当前剩余的主要缺口不再是“事后落盘”，而是 **SSE 仍然是一次性读取历史事件，不是长连接 tail**，以及 **session 报告仍然只在 run 结束后写入**。
 
 ### 优先级表
 
 | 优先级 | 方向 | 说明 |
 |---|---|---|
-| **P0** | 实时事件流 | 给 `Engine` 加可选 `EventSink` 接口，每轮 turn 结束后主动推送事件。Dashboard 才能真正"活"起来。这是 UI 有意义的前提。 |
+| **P0** | 实时事件流 | ✅ 已完成：`Engine` 运行中实时写事件，并同步刷新 `run.json`。下一步是把 SSE 从“读历史”升级成“跟随新事件”。 |
 | **P1** | 角色分化上下文注入 | `buildPrompt` 加 `role` 参数。Planner 只注入 README + goal，不注入 docs；Worker 完整上下文；Reviewer 只看 diff + task goal。改动小，立刻提升 CodxPlanner 分解质量。 |
 | **P2** | 结构化 stop payload | `[canx:stop:{"summary":"...","files_changed":[...]}]`，Engine 解析写入 task.Summary，下一个 task 的 prompt 可以引用前一个 task 的结论。 |
 | **P3** | 错误模式持久化 | Validation 失败追加到 `.canx/patterns.md`，`workspace.Load` 加载后注入 Worker prompt 头部。跑得越多越知道避坑。自托管开发的核心飞轮。 |
@@ -102,7 +102,7 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 ```
 近期（可并行，代码不重叠）：
   P1  角色分化 prompt      → internal/loop/engine.go，buildPrompt 加 role 参数
-  P0  实时事件流           → internal/loop/engine.go 加 EventSink 接口
+  P0.5 SSE 跟随新事件      → cmd/canxd/server.go，event stream 变成长连接 tail
 
 随后：
   P2  结构化 stop payload  → engine.go 解析 + task 模型扩展

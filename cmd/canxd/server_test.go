@@ -2,12 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/farmcan/canx/internal/rooms"
 	"github.com/farmcan/canx/internal/runlog"
@@ -252,19 +256,91 @@ func TestServeExposesSSEEvents(t *testing.T) {
 		t.Fatalf("newServerMux() error = %v", err)
 	}
 
-	req := httptest.NewRequest("GET", "/api/runs/run-1/events/stream", nil)
-	resp := httptest.NewRecorder()
-	mux.ServeHTTP(resp, req)
-	if resp.Code != 200 {
-		t.Fatalf("sse status = %d", resp.Code)
-	}
-	body, err := io.ReadAll(resp.Body)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/runs/run-1/events/stream", nil)
 	if err != nil {
-		t.Fatalf("ReadAll() error = %v", err)
+		t.Fatalf("NewRequestWithContext() error = %v", err)
 	}
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("sse status = %d", resp.StatusCode)
+	}
+
+	buffer := make([]byte, 512)
+	n, err := resp.Body.Read(buffer)
+	if err != nil && err != io.EOF {
+		t.Fatalf("Read() error = %v", err)
+	}
+	cancel()
+	body := buffer[:n]
 	if !bytes.Contains(body, []byte("event: run_finished")) {
 		t.Fatalf("unexpected sse body: %s", string(body))
 	}
+}
+
+func TestServeStreamsFutureSSEEvents(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	store := runlog.NewEventStore(root)
+	if err := store.SaveRun(runlog.RunRecord{ID: "run-1", Goal: "ship", RepoRoot: root, Status: "running"}); err != nil {
+		t.Fatalf("SaveRun() error = %v", err)
+	}
+	if err := store.AppendEvent("run-1", runlog.Event{Kind: "run_started", Message: "start"}); err != nil {
+		t.Fatalf("AppendEvent() error = %v", err)
+	}
+
+	mux, err := newServerMux(store)
+	if err != nil {
+		t.Fatalf("newServerMux() error = %v", err)
+	}
+
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/runs/run-1/events/stream", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		data, _ := io.ReadAll(resp.Body)
+		received <- string(data)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	if err := store.AppendEvent("run-1", runlog.Event{Kind: "turn_completed", Message: "later"}); err != nil {
+		t.Fatalf("AppendEvent(later) error = %v", err)
+	}
+
+	var body string
+	select {
+	case body = <-received:
+	case <-time.After(500 * time.Millisecond):
+		cancel()
+		body = <-received
+	}
+
+	if !strings.Contains(body, "event: turn_completed") {
+		t.Fatalf("expected streamed future event, got: %s", body)
+	}
+	cancel()
 }
 
 func TestRoomInstructionCreatesActionRecord(t *testing.T) {

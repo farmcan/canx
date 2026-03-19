@@ -127,6 +127,31 @@ go run ./cmd/canxd serve -repo .
 - runtime 元数据（在 turn event 里）
 - room/message 面板，可手工追加人类指令
 
+### 验证 SSE 实时事件流
+
+先生成一个 run：
+
+```bash
+go run ./cmd/canxd -goal "sse tail smoke" -runner mock -repo . -max-turns 1
+```
+
+再启动 dashboard，并用 `curl -N` 订阅：
+
+```bash
+go run ./cmd/canxd serve -repo .
+curl -N http://127.0.0.1:8090/api/runs/<run-id>/events/stream
+```
+
+预期可以看到持续输出的 SSE 事件，例如：
+
+```text
+event: run_started
+data: {...}
+
+event: session_started
+data: {...}
+```
+
 ### 验证 room/message API
 
 ```bash

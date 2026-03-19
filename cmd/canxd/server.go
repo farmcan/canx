@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/farmcan/canx/internal/rooms"
 	"github.com/farmcan/canx/internal/runlog"
@@ -99,21 +100,9 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 			}
 			writeJSON(w, actions)
 		case len(parts) == 3 && parts[1] == "events" && parts[2] == "stream":
-			events, err := store.LoadEvents(runID)
-			if err != nil {
+			if err := streamRunEvents(w, r, store, runID); err != nil {
 				writeError(w, err)
 				return
-			}
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.Header().Set("Cache-Control", "no-cache")
-			for _, event := range events {
-				data, err := json.Marshal(event)
-				if err != nil {
-					writeError(w, err)
-					return
-				}
-				_, _ = fmt.Fprintf(w, "event: %s\n", event.Kind)
-				_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 			}
 		default:
 			http.NotFound(w, r)
@@ -315,4 +304,43 @@ func writeJSON(w http.ResponseWriter, value any) {
 func writeError(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusInternalServerError)
 	writeJSON(w, map[string]string{"error": err.Error()})
+}
+
+func streamRunEvents(w http.ResponseWriter, r *http.Request, store runlog.EventStore, runID string) error {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("response writer does not support flushing")
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	last := 0
+	for {
+		events, err := store.LoadEvents(runID)
+		if err != nil {
+			return err
+		}
+		for _, event := range events[last:] {
+			data, err := json.Marshal(event)
+			if err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(w, "event: %s\n", event.Kind); err != nil {
+				return nil
+			}
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+				return nil
+			}
+			flusher.Flush()
+		}
+		last = len(events)
+
+		select {
+		case <-r.Context().Done():
+			return nil
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 }

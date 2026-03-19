@@ -125,6 +125,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		Decision:  "running",
 		Reason:    "session started",
 		TurnCount: len(outcome.Turns),
+		Turns:     snapshotSessionTurns(outcome.Turns),
 		Tasks:     cloneTasks(outcome.Tasks),
 	}); err != nil {
 		return Outcome{}, err
@@ -217,6 +218,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			Decision:  "running",
 			Reason:    summarizeTurn(turn, result.Output, validationPassed),
 			TurnCount: len(outcome.Turns),
+			Turns:     snapshotSessionTurns(outcome.Turns),
 			Tasks:     cloneTasks(outcome.Tasks),
 		}); err != nil {
 			return Outcome{}, err
@@ -302,6 +304,25 @@ func (e Engine) emitSession(report runlog.SessionReport) error {
 		return nil
 	}
 	return e.SessionSink(report)
+}
+
+func snapshotSessionTurns(turns []Turn) []runlog.SessionTurn {
+	if len(turns) == 0 {
+		return nil
+	}
+	snapshots := make([]runlog.SessionTurn, 0, len(turns))
+	for _, turn := range turns {
+		snapshots = append(snapshots, runlog.SessionTurn{
+			Number:           turn.Number,
+			Summary:          summarizeTurn(turn.Number, turn.RunnerResult.Output, turn.ValidationPassed),
+			Output:           turn.RunnerResult.Output,
+			ValidationPassed: turn.ValidationPassed,
+			ValidationOutput: turn.ValidationOutput,
+			Review:           turn.Review,
+			Runtime:          turn.RunnerResult.Runtime,
+		})
+	}
+	return snapshots
 }
 
 func cloneTasks(items []tasks.Task) []tasks.Task {

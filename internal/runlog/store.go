@@ -7,9 +7,20 @@ import (
 	"time"
 
 	"github.com/farmcan/canx/internal/codex"
+	"github.com/farmcan/canx/internal/review"
 	"github.com/farmcan/canx/internal/sessions"
 	"github.com/farmcan/canx/internal/tasks"
 )
+
+type SessionTurn struct {
+	Number           int           `json:"number"`
+	Summary          string        `json:"summary,omitempty"`
+	Output           string        `json:"output,omitempty"`
+	ValidationPassed bool          `json:"validation_passed"`
+	ValidationOutput string        `json:"validation_output,omitempty"`
+	Review           review.Result `json:"review,omitempty"`
+	Runtime          codex.Runtime `json:"runtime,omitempty"`
+}
 
 type SessionReport struct {
 	Session   sessions.Session `json:"session"`
@@ -18,6 +29,7 @@ type SessionReport struct {
 	Decision  string           `json:"decision"`
 	Reason    string           `json:"reason"`
 	TurnCount int              `json:"turn_count"`
+	Turns     []SessionTurn    `json:"turns,omitempty"`
 	Tasks     []tasks.Task     `json:"tasks,omitempty"`
 	WrittenAt time.Time        `json:"written_at"`
 }

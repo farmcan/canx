@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -197,6 +198,7 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 		Decision:  outcome.Decision.Action,
 		Reason:    outcome.Decision.Reason,
 		TurnCount: len(outcome.Turns),
+		Turns:     latestSessionTurns(outcome),
 		Tasks:     outcome.Tasks,
 	}); err != nil {
 		return "", err
@@ -224,6 +226,39 @@ func latestRuntime(outcome loop.Outcome) codex.Runtime {
 		return codex.Runtime{}
 	}
 	return outcome.Turns[len(outcome.Turns)-1].RunnerResult.Runtime
+}
+
+func latestSessionTurns(outcome loop.Outcome) []runlog.SessionTurn {
+	if len(outcome.Turns) == 0 {
+		return nil
+	}
+	turns := make([]runlog.SessionTurn, 0, len(outcome.Turns))
+	for _, turn := range outcome.Turns {
+		turns = append(turns, runlog.SessionTurn{
+			Number:           turn.Number,
+			Summary:          summarizeSessionTurn(turn.Number, turn.RunnerResult.Output, turn.ValidationPassed),
+			Output:           turn.RunnerResult.Output,
+			ValidationPassed: turn.ValidationPassed,
+			ValidationOutput: turn.ValidationOutput,
+			Review:           turn.Review,
+			Runtime:          turn.RunnerResult.Runtime,
+		})
+	}
+	return turns
+}
+
+func summarizeSessionTurn(turn int, output string, validated bool) string {
+	summary := strings.TrimSpace(output)
+	if len(summary) > 1000 {
+		summary = summary[:1000] + "...(truncated)"
+	}
+
+	status := "validation_failed"
+	if validated {
+		status = "validation_passed"
+	}
+
+	return "turn=" + strconv.Itoa(turn) + " " + status + " output=" + summary
 }
 
 func selectPlanner(opts Options, workdir string) (tasks.Planner, error) {

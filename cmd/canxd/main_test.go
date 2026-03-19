@@ -177,7 +177,7 @@ func TestRunPersistsSessionProgressBeforeCompletion(t *testing.T) {
 		if err := json.Unmarshal(sessionData, &report); err != nil {
 			return false
 		}
-		return report.RunID == runID && report.TurnCount == 1 && len(report.Session.Turns) == 1 && !report.Session.Closed
+		return report.RunID == runID && report.TurnCount == 1 && len(report.Session.Turns) == 1 && len(report.Turns) == 1 && report.Turns[0].Number == 1 && !report.Session.Closed
 	})
 
 	close(runner.release)

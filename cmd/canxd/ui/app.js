@@ -120,7 +120,7 @@ async function renderSession(sessionID) {
   const report = await fetchJSON(`/api/sessions/${sessionID}`);
   const session = report.session || report.Session;
   const runtime = report.runtime || report.Runtime || {};
-  const turns = session.turns || session.Turns || [];
+  const turns = report.turns || report.Turns || session.turns || session.Turns || [];
   const container = document.getElementById('session-detail');
   container.innerHTML = `
     <div class="detail-card"><strong>ID</strong><div>${session.id || session.ID}</div></div>

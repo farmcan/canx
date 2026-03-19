@@ -103,7 +103,7 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 ```
 近期（可并行，代码不重叠）：
   P1  角色分化 prompt      → 已完成 planner/worker 分流；下一步补 reviewer role
-  P0.75 UI 自动刷新        → cmd/canxd/ui/app.js，把 SSE 接进 runs/tasks/actions 面板
+  P0.75 UI 自动刷新        → ✅ 已完成：SSE 事件会驱动 runs/tasks/actions/session 面板刷新
 
 随后：
   P2  结构化 stop payload  → engine.go 解析 + task 模型扩展

@@ -1,3 +1,5 @@
+import {computeLiveRefreshPlan} from './live.js';
+
 let currentRun = null;
 let currentContext = null;
 let currentRoom = null;
@@ -71,6 +73,15 @@ async function loadRun(runID) {
   renderContext(context);
   renderRooms(rooms, run.id);
   startEventStream(run.id);
+}
+
+async function renderTaskDetail(runID, taskID) {
+  if (!taskID) {
+    document.getElementById('task-detail').textContent = 'Select a task.';
+    return;
+  }
+  const detail = await fetchJSON(`/api/runs/${runID}/tasks/${taskID}`);
+  document.getElementById('task-detail').textContent = JSON.stringify(detail, null, 2);
 }
 
 function renderTasks(run) {
@@ -282,10 +293,30 @@ function startEventStream(runID) {
   }
   currentEventSource = new EventSource(`/api/runs/${runID}/events/stream`);
   currentEventSource.onmessage = async () => {
-    const [events, actions] = await Promise.all([
+    const [run, events, actions, sessions] = await Promise.all([
+      fetchJSON(`/api/runs/${runID}`),
       fetchJSON(`/api/runs/${runID}/events`),
-      fetchJSON(`/api/runs/${runID}/actions`)
+      fetchJSON(`/api/runs/${runID}/actions`),
+      fetchJSON('/api/sessions')
     ]);
+    currentRun = run;
+    setText('run-summary', `${run.goal}\n${run.reason || ''}`);
+    setText('session-summary', run.session_id || '—');
+    setText('task-summary', `${run.task_count} tasks`);
+    renderTasks(run);
+    renderSessions(sessions, run.session_id);
+
+    const plan = computeLiveRefreshPlan({
+      currentTaskID: currentTask,
+      currentSessionID: run.session_id,
+    }, run);
+    currentTask = plan.nextTaskID;
+    if (plan.refreshTaskDetail) {
+      await renderTaskDetail(run.id, currentTask);
+    }
+    if (plan.refreshSession) {
+      await renderSession(run.session_id);
+    }
     document.getElementById('events').textContent = JSON.stringify(events, null, 2);
     document.getElementById('actions').textContent = JSON.stringify(actions, null, 2);
   };

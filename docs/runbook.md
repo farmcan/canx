@@ -152,6 +152,18 @@ event: session_started
 data: {...}
 ```
 
+### 验证前端 live refresh 逻辑
+
+```bash
+node --test cmd/canxd/ui/live.test.mjs
+```
+
+预期：3 个用例全部通过，覆盖：
+
+- 保留当前选中的 task
+- task 消失时回退到首个 task
+- 空 task 列表时不刷新 detail
+
 ### 验证 room/message API
 
 ```bash

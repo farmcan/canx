@@ -15,6 +15,7 @@ type PlannerRunner interface {
 
 type CodxPlanner struct {
 	Runner PlannerRunner
+	PromptBuilder func(goal string) string
 }
 
 const plannerPrompt = `You are a software delivery supervisor. Given a goal, output a JSON array of tasks.
@@ -29,8 +30,16 @@ Output ONLY valid JSON, no explanation. Maximum 5 tasks. Example:
 
 Goal: `
 
+func DefaultPlannerPrompt(goal string) string {
+	return plannerPrompt + goal
+}
+
 func (p CodxPlanner) Plan(ctx context.Context, goal string) ([]Task, error) {
-	output, err := p.Runner.Run(ctx, plannerPrompt+goal)
+	prompt := DefaultPlannerPrompt(goal)
+	if p.PromptBuilder != nil {
+		prompt = p.PromptBuilder(goal)
+	}
+	output, err := p.Runner.Run(ctx, prompt)
 	if err != nil {
 		return nil, err
 	}

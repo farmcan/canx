@@ -2,22 +2,25 @@ package tasks
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
 type fakePlannerRunner struct {
 	output string
 	err    error
+	prompt string
 }
 
-func (r fakePlannerRunner) Run(_ context.Context, _ string) (string, error) {
+func (r *fakePlannerRunner) Run(_ context.Context, prompt string) (string, error) {
+	r.prompt = prompt
 	return r.output, r.err
 }
 
 func TestCodxPlannerParsesJSONOutput(t *testing.T) {
 	t.Parallel()
 
-	runner := fakePlannerRunner{output: `[
+	runner := &fakePlannerRunner{output: `[
 		{"id":"task-1","title":"Add test","goal":"add a failing test for X","status":"pending"},
 		{"id":"task-2","title":"Implement X","goal":"implement X to pass the test","status":"pending"}
 	]`}
@@ -39,7 +42,7 @@ func TestCodxPlannerParsesJSONOutput(t *testing.T) {
 func TestCodxPlannerReturnsErrorOnInvalidJSON(t *testing.T) {
 	t.Parallel()
 
-	runner := fakePlannerRunner{output: "I'll create two tasks: first add a test, then implement"}
+	runner := &fakePlannerRunner{output: "I'll create two tasks: first add a test, then implement"}
 
 	planner := CodxPlanner{Runner: runner}
 	_, err := planner.Plan(context.Background(), "implement feature X")
@@ -51,7 +54,7 @@ func TestCodxPlannerReturnsErrorOnInvalidJSON(t *testing.T) {
 func TestCodxPlannerParsesFencedJSONOutput(t *testing.T) {
 	t.Parallel()
 
-	runner := fakePlannerRunner{output: "Here is the plan:\n```json\n[\n  {\"id\":\"task-a\",\"title\":\"Inspect\",\"goal\":\"inspect the repo\"}\n]\n```"}
+	runner := &fakePlannerRunner{output: "Here is the plan:\n```json\n[\n  {\"id\":\"task-a\",\"title\":\"Inspect\",\"goal\":\"inspect the repo\"}\n]\n```"}
 
 	planner := CodxPlanner{Runner: runner}
 	items, err := planner.Plan(context.Background(), "inspect repo")
@@ -70,7 +73,7 @@ func TestCodxPlannerParsesFencedJSONOutput(t *testing.T) {
 func TestCodxPlannerNormalizesMissingID(t *testing.T) {
 	t.Parallel()
 
-	runner := fakePlannerRunner{output: `[
+	runner := &fakePlannerRunner{output: `[
 		{"title":"Inspect","goal":"inspect the repo","status":"pending"},
 		{"title":"Test","goal":"run tests","status":"pending"}
 	]`}
@@ -86,6 +89,28 @@ func TestCodxPlannerNormalizesMissingID(t *testing.T) {
 	}
 	if items[0].ID == items[1].ID {
 		t.Fatal("expected unique generated task ids")
+	}
+}
+
+func TestCodxPlannerPromptOmitsDocsNoise(t *testing.T) {
+	t.Parallel()
+
+	runner := &fakePlannerRunner{output: `[{"id":"task-1","title":"Inspect","goal":"inspect repo","status":"pending"}]`}
+	planner := CodxPlanner{Runner: runner}
+
+	_, err := planner.Plan(context.Background(), "inspect repo")
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+
+	if runner.prompt == "" {
+		t.Fatal("expected prompt to be captured")
+	}
+	if !strings.Contains(runner.prompt, "Goal: inspect repo") {
+		t.Fatalf("prompt missing goal: %q", runner.prompt)
+	}
+	if strings.Contains(runner.prompt, "Reference docs:") {
+		t.Fatalf("planner prompt should not include docs noise: %q", runner.prompt)
 	}
 }
 

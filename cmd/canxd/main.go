@@ -231,10 +231,36 @@ func selectPlanner(opts Options, workdir string) (tasks.Planner, error) {
 				runner:  codex.NewExecRunnerInDir(opts.CodexBin, workdir),
 				workdir: workdir,
 			},
+			PromptBuilder: func(goal string) string {
+				return plannerPrompt(goal, workdir)
+			},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown planner mode: %s", opts.PlannerMode)
 	}
+}
+
+func plannerPrompt(goal, workdir string) string {
+	repo, err := workspace.Load(workdir)
+	if err != nil {
+		return tasks.DefaultPlannerPrompt(goal)
+	}
+	var builder strings.Builder
+	builder.WriteString("You are a software delivery supervisor. Given a goal, output a JSON array of tasks.\n\n")
+	builder.WriteString("Each task must have: id (string), title (string, max 40 chars), goal (string), status (\"pending\").\n\n")
+	builder.WriteString("Prefer 2-5 tasks when the goal naturally contains multiple steps such as inspect + test + implement.\n")
+	builder.WriteString("Use a single task only when the goal is truly atomic.\n\n")
+	builder.WriteString("Repository context:\n")
+	builder.WriteString(repo.Readme)
+	if repo.Agents != "" {
+		builder.WriteString("\n\nAgent rules:\n")
+		builder.WriteString(repo.Agents)
+	}
+	builder.WriteString("\n\nOutput ONLY valid JSON, no explanation. Maximum 5 tasks. Example:\n")
+	builder.WriteString("[{\"id\":\"task-1\",\"title\":\"Add failing test\",\"goal\":\"write a failing test for X\",\"status\":\"pending\"}]\n\n")
+	builder.WriteString("Goal: ")
+	builder.WriteString(goal)
+	return builder.String()
 }
 
 type plannerRunnerAdapter struct {

@@ -19,6 +19,11 @@ import (
 const stopMarker = "[canx:stop]"
 const escalateMarker = "[canx:escalate]"
 
+const (
+	promptRolePlanner = "planner"
+	promptRoleWorker  = "worker"
+)
+
 var ErrMissingRunner = errors.New("missing runner")
 
 type Engine struct {
@@ -118,7 +123,7 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			turnCtx, cancel = context.WithTimeout(ctx, e.TurnTimeout)
 		}
 
-		prompt, docsUsed := buildPrompt(cfg.Goal, repo, outcome.Tasks, outcome.Turns, activeIndex)
+		prompt, docsUsed := buildPrompt(promptRoleWorker, cfg.Goal, repo, outcome.Tasks, outcome.Turns, activeIndex)
 		if outcome.PromptDocsUsed == 0 {
 			outcome.PromptDocsUsed = docsUsed
 		}
@@ -245,7 +250,7 @@ func cloneTasks(items []tasks.Task) []tasks.Task {
 const promptDocsBudget = 4000
 const promptDocSnippetLimit = 800
 
-func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task, turns []Turn, activeIndex int) (string, int) {
+func buildPrompt(role, goal string, repo workspace.Context, plannedTasks []tasks.Task, turns []Turn, activeIndex int) (string, int) {
 	var builder strings.Builder
 	docsUsed := 0
 	builder.WriteString("Goal:\n")
@@ -280,7 +285,7 @@ func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task,
 		builder.WriteString("\n\nAgent rules:\n")
 		builder.WriteString(repo.Agents)
 	}
-	if len(repo.Docs) > 0 {
+	if role == promptRoleWorker && len(repo.Docs) > 0 {
 		builder.WriteString("\n\nReference docs:\n")
 		usedChars := 0
 		for _, doc := range repo.Docs {
@@ -303,7 +308,7 @@ func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task,
 			docsUsed++
 		}
 	}
-	if len(turns) > 0 {
+	if role == promptRoleWorker && len(turns) > 0 {
 		last := turns[len(turns)-1]
 		builder.WriteString("\n\nPrevious turn summary:\n")
 		builder.WriteString(summarizeTurn(last.Number, last.RunnerResult.Output, last.ValidationPassed))
@@ -312,7 +317,11 @@ func buildPrompt(goal string, repo workspace.Context, plannedTasks []tasks.Task,
 			builder.WriteString(last.ValidationOutput)
 		}
 	}
-	builder.WriteString("\n\nRespond with progress, and include [canx:stop] when the task is complete.")
+	if role == promptRolePlanner {
+		builder.WriteString("\n\nReturn a concise task-oriented response.")
+	} else {
+		builder.WriteString("\n\nRespond with progress, and include [canx:stop] when the task is complete.")
+	}
 	return builder.String(), docsUsed
 }
 

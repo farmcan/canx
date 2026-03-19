@@ -213,7 +213,7 @@ func TestBuildPromptKeepsUTF8ValidWhenTruncatingDocs(t *testing.T) {
 	t.Parallel()
 
 	doc := strings.Repeat("中", promptDocSnippetLimit+1)
-	prompt, _ := buildPrompt("ship mvp", workspace.Context{
+	prompt, _ := buildPrompt(promptRoleWorker, "ship mvp", workspace.Context{
 		Root:   ".",
 		Readme: "readme",
 		Docs:   []workspace.Document{{Path: "docs/utf8.md", Content: doc}},
@@ -221,6 +221,44 @@ func TestBuildPromptKeepsUTF8ValidWhenTruncatingDocs(t *testing.T) {
 
 	if !utf8.ValidString(prompt) {
 		t.Fatal("expected prompt to remain valid utf-8")
+	}
+}
+
+func TestBuildPromptOmitsDocsForPlannerRole(t *testing.T) {
+	t.Parallel()
+
+	prompt, docsUsed := buildPrompt(promptRolePlanner, "inspect repo", workspace.Context{
+		Root:   ".",
+		Readme: "readme",
+		Agents: "agents",
+		Docs:   []workspace.Document{{Path: "docs/high-signal.md", Content: "extra docs"}},
+	}, nil, nil, -1)
+
+	if strings.Contains(prompt, "Reference docs:") {
+		t.Fatalf("planner prompt should omit docs: %q", prompt)
+	}
+	if docsUsed != 0 {
+		t.Fatalf("planner docsUsed = %d, want 0", docsUsed)
+	}
+	if !strings.Contains(prompt, "Agent rules:") {
+		t.Fatalf("planner prompt missing agent rules: %q", prompt)
+	}
+}
+
+func TestBuildPromptKeepsDocsForWorkerRole(t *testing.T) {
+	t.Parallel()
+
+	prompt, docsUsed := buildPrompt(promptRoleWorker, "ship mvp", workspace.Context{
+		Root:   ".",
+		Readme: "readme",
+		Docs:   []workspace.Document{{Path: "docs/high-signal.md", Content: "extra docs"}},
+	}, []tasks.Task{{ID: "t1", Title: "Task 1", Goal: "do thing", Status: tasks.StatusPending}}, nil, 0)
+
+	if !strings.Contains(prompt, "Reference docs:") {
+		t.Fatalf("worker prompt missing docs: %q", prompt)
+	}
+	if docsUsed != 1 {
+		t.Fatalf("worker docsUsed = %d, want 1", docsUsed)
 	}
 }
 

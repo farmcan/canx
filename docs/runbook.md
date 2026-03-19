@@ -164,6 +164,18 @@ node --test cmd/canxd/ui/live.test.mjs
 - task 消失时回退到首个 task
 - 空 task 列表时不刷新 detail
 
+### 验证错误模式沉淀
+
+```bash
+go test ./internal/loop -run TestEnginePersistsValidationFailurePattern -v
+```
+
+预期：
+
+- `.canx/patterns.md` 被创建
+- 失败输出会被写入文件
+- 重复失败不会无限追加相同内容
+
 ### 验证 room/message API
 
 ```bash

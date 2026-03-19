@@ -71,3 +71,26 @@ func TestLoadAllowsMissingAgentsFile(t *testing.T) {
 		t.Fatal("expected readme content")
 	}
 }
+
+func TestLoadReadsPatternsFileWhenPresent(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("readme"), 0o644); err != nil {
+		t.Fatalf("WriteFile(README) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".canx"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.canx) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".canx", "patterns.md"), []byte("- failing test: make test"), 0o644); err != nil {
+		t.Fatalf("WriteFile(patterns) error = %v", err)
+	}
+
+	ctx, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if ctx.Patterns == "" {
+		t.Fatal("expected patterns content")
+	}
+}

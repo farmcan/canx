@@ -2,6 +2,8 @@ package loop
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -285,6 +287,50 @@ func TestBuildPromptKeepsDocsForWorkerRole(t *testing.T) {
 	}
 	if docsUsed != 1 {
 		t.Fatalf("worker docsUsed = %d, want 1", docsUsed)
+	}
+}
+
+func TestBuildPromptIncludesKnownFailurePatternsForWorker(t *testing.T) {
+	t.Parallel()
+
+	prompt, _ := buildPrompt(promptRoleWorker, "ship mvp", workspace.Context{
+		Root:     ".",
+		Readme:   "readme",
+		Patterns: "- make test:\nFAIL",
+	}, []tasks.Task{{ID: "t1", Title: "Task 1", Goal: "do thing", Status: tasks.StatusPending}}, nil, 0)
+
+	if !strings.Contains(prompt, "Known failure patterns:") {
+		t.Fatalf("worker prompt missing patterns: %q", prompt)
+	}
+	if !strings.Contains(prompt, "FAIL") {
+		t.Fatalf("worker prompt missing pattern content: %q", prompt)
+	}
+}
+
+func TestEnginePersistsValidationFailurePattern(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	engine := Engine{
+		Runner:  &fakeRunner{results: []codex.Result{{Output: "first try"}, {Output: "stop [canx:stop]"}}},
+		Workdir: dir,
+	}
+
+	_, err := engine.Run(context.Background(), Config{
+		Goal:               "fix failing validation",
+		MaxTurns:           2,
+		ValidationCommands: []string{"echo TEST_FAILED && false"},
+	}, workspace.Context{Root: dir, Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".canx", "patterns.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(patterns) error = %v", err)
+	}
+	if !strings.Contains(string(data), "TEST_FAILED") {
+		t.Fatalf("patterns file missing validation failure: %q", string(data))
 	}
 }
 

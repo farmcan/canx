@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -150,6 +152,12 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		}
 
 		validationPassed, validationOutput := runValidation(turnCtx, e.Workdir, cfg.ValidationCommands)
+		if validationOutput != "" {
+			_ = persistFailurePattern(e.Workdir, validationOutput)
+			if repo.Root == e.Workdir {
+				repo.Patterns = loadPatternsFile(e.Workdir)
+			}
+		}
 		cancel()
 		reviewResult := review.Evaluate(review.Result{
 			Validated: validationPassed,
@@ -338,6 +346,11 @@ func buildPrompt(role, goal string, repo workspace.Context, plannedTasks []tasks
 			docsUsed++
 		}
 	}
+	if role == promptRoleWorker && strings.TrimSpace(repo.Patterns) != "" {
+		builder.WriteString("\n\nKnown failure patterns:\n")
+		builder.WriteString(strings.TrimSpace(repo.Patterns))
+		builder.WriteString("\n")
+	}
 	if role == promptRoleWorker && len(turns) > 0 {
 		last := turns[len(turns)-1]
 		builder.WriteString("\n\nPrevious turn summary:\n")
@@ -494,6 +507,44 @@ func truncateUTF8(input string, limit int) string {
 		runes = index
 	}
 	return input[:runes]
+}
+
+func persistFailurePattern(root, pattern string) error {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return nil
+	}
+	dir := filepath.Join(root, ".canx")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "patterns.md")
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if strings.Contains(string(existing), pattern) {
+		return nil
+	}
+	var builder strings.Builder
+	if len(existing) > 0 {
+		builder.Write(existing)
+		if !strings.HasSuffix(builder.String(), "\n") {
+			builder.WriteString("\n")
+		}
+	}
+	builder.WriteString("- ")
+	builder.WriteString(strings.ReplaceAll(pattern, "\n", "\n  "))
+	builder.WriteString("\n")
+	return os.WriteFile(path, []byte(builder.String()), 0o644)
+}
+
+func loadPatternsFile(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, ".canx", "patterns.md"))
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func blockActiveTask(items []tasks.Task, activeIndex int) []tasks.Task {

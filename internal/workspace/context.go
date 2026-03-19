@@ -11,6 +11,7 @@ type Context struct {
 	Root   string
 	Readme string
 	Agents string
+	Patterns string
 	Docs   []Document
 }
 
@@ -35,6 +36,11 @@ func Load(root string) (Context, error) {
 		Readme: string(readme),
 		Agents: string(agents),
 	}
+	patterns, err := os.ReadFile(filepath.Join(root, ".canx", "patterns.md"))
+	if err != nil && !os.IsNotExist(err) {
+		return Context{}, err
+	}
+	ctx.Patterns = string(patterns)
 
 	docsRoot := filepath.Join(root, "docs")
 	_ = filepath.WalkDir(docsRoot, func(path string, d fs.DirEntry, walkErr error) error {

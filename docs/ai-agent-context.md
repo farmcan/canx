@@ -82,7 +82,7 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 
 ### 当前缺口说明
 
-`EventStore`、`Rooms`、`server.go`（Dashboard）已在代码里，`P0 实时事件流` 和 `P0.5 SSE 长连接 tail` 已完成：`Engine` 每轮会即时写入 `session_started`、`task_state`、`turn_completed`，同步刷新 `run.json`，`/api/runs/:id/events/stream` 也会持续跟随新事件。当前剩余的主要缺口是 **session 报告仍然只在 run 结束后写入**，以及 **UI 端还没有把 SSE 自动接成真正的 live 刷新视图**。
+`EventStore`、`Rooms`、`server.go`（Dashboard）已在代码里，`P0 实时事件流` 和 `P0.5 SSE 长连接 tail` 已完成：`Engine` 每轮会即时写入 `session_started`、`task_state`、`turn_completed`，同步刷新 `run.json`，`/api/runs/:id/events/stream` 也会持续跟随新事件。当前剩余的主要缺口是 **session detail 还没有完全做成运行中逐 turn 的结构化展示**，以及 **AI reviewer 还没有稳定 verdict schema**。
 
 ### 优先级表
 
@@ -106,7 +106,7 @@ loop.Engine.Run(ctx, Config, workspace.Context)
   P0.75 UI 自动刷新        → ✅ 已完成：SSE 事件会驱动 runs/tasks/actions/session 面板刷新
 
 随后：
-  P3.5 session 增量持久化    → 让 session detail 在运行中也持续刷新
+  P3.5 session 增量持久化    → ✅ 已完成：session report 会在 `session_started` 和每次 `turn_completed` 后即时刷新
   P7 AI reviewer policy      → 在可选 ReviewRunner 之上定义更稳定的 verdict schema
 
 再往后（复杂度高）：

@@ -23,21 +23,22 @@ const stopMarker = "[canx:stop]"
 const escalateMarker = "[canx:escalate]"
 
 const (
-	promptRolePlanner = "planner"
-	promptRoleWorker  = "worker"
+	promptRolePlanner  = "planner"
+	promptRoleWorker   = "worker"
 	promptRoleReviewer = "reviewer"
 )
 
 var ErrMissingRunner = errors.New("missing runner")
 
 type Engine struct {
-	Runner      codex.Runner
+	Runner       codex.Runner
 	ReviewRunner codex.Runner
-	Workdir     string
-	TurnTimeout time.Duration
-	Sessions    *sessions.Registry
-	Planner     tasks.Planner
-	EventSink   func(runlog.Event) error
+	Workdir      string
+	TurnTimeout  time.Duration
+	Sessions     *sessions.Registry
+	Planner      tasks.Planner
+	EventSink    func(runlog.Event) error
+	SessionSink  func(runlog.SessionReport) error
 }
 
 type Outcome struct {
@@ -118,6 +119,16 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 	}); err != nil {
 		return Outcome{}, err
 	}
+	if err := e.emitSession(runlog.SessionReport{
+		Session:   outcome.Session,
+		Runtime:   codex.Runtime{},
+		Decision:  "running",
+		Reason:    "session started",
+		TurnCount: len(outcome.Turns),
+		Tasks:     cloneTasks(outcome.Tasks),
+	}); err != nil {
+		return Outcome{}, err
+	}
 	for turn := 1; turn <= cfg.MaxTurns; turn++ {
 		activeIndex := firstActiveTaskIndex(outcome.Tasks)
 		if activeIndex == -1 {
@@ -194,6 +205,16 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			return Outcome{}, err
 		}
 		outcome.Session = session
+		if err := e.emitSession(runlog.SessionReport{
+			Session:   outcome.Session,
+			Runtime:   result.Runtime,
+			Decision:  "running",
+			Reason:    summarizeTurn(turn, result.Output, validationPassed),
+			TurnCount: len(outcome.Turns),
+			Tasks:     cloneTasks(outcome.Tasks),
+		}); err != nil {
+			return Outcome{}, err
+		}
 		payload := parseStopPayload(result.Output)
 		taskDone := reviewResult.Approved || hasStopSignal(result.Output)
 		outcome.Tasks = updateTaskStatuses(outcome.Tasks, activeIndex, taskDone)
@@ -202,13 +223,13 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 			outcome.Tasks[activeIndex].FilesChanged = payload.FilesChanged
 		}
 		if err := e.emitEvent(runlog.Event{
-			Kind:      "turn_completed",
-			SessionID: session.ID,
-			TaskID:    outcome.Tasks[activeIndex].ID,
-			Turn:      turn,
-			Message:   summarizePrompt(prompt),
-			Output:    result.Output,
-			Validated: validationPassed,
+			Kind:       "turn_completed",
+			SessionID:  session.ID,
+			TaskID:     outcome.Tasks[activeIndex].ID,
+			Turn:       turn,
+			Message:    summarizePrompt(prompt),
+			Output:     result.Output,
+			Validated:  validationPassed,
 			Validation: validationOutput,
 			Runtime: map[string]any{
 				"model":      result.Runtime.Model,
@@ -268,6 +289,13 @@ func (e Engine) emitEvent(event runlog.Event) error {
 		return nil
 	}
 	return e.EventSink(event)
+}
+
+func (e Engine) emitSession(report runlog.SessionReport) error {
+	if e.SessionSink == nil {
+		return nil
+	}
+	return e.SessionSink(report)
 }
 
 func cloneTasks(items []tasks.Task) []tasks.Task {

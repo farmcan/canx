@@ -157,6 +157,11 @@ func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, 
 			}
 			return updateRunProgress(eventStore, initialRun, runID, cfg.Goal, absRepoPath, event)
 		},
+		SessionSink: func(report runlog.SessionReport) error {
+			report.RunID = runID
+			_, err := runlog.WriteSessionReport(absRepoPath, report)
+			return err
+		},
 	}
 
 	outcome, err := engine.Run(context.Background(), cfg, repo)

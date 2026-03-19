@@ -164,6 +164,14 @@ node --test cmd/canxd/ui/live.test.mjs
 - task 消失时回退到首个 task
 - 空 task 列表时不刷新 detail
 
+### 验证 session 增量持久化
+
+```bash
+go test ./cmd/canxd -run TestRunPersistsSessionProgressBeforeCompletion -v
+```
+
+预期：run 仍在执行时，`.canx/sessions/<session-id>.json` 已存在，且 `turn_count=1`、`closed=false`。
+
 ### 验证错误模式沉淀
 
 ```bash

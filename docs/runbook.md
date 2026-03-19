@@ -164,6 +164,14 @@ node --test cmd/canxd/ui/live.test.mjs
 - task 消失时回退到首个 task
 - 空 task 列表时不刷新 detail
 
+### 验证 reviewer verdict schema
+
+```bash
+go test ./internal/review ./internal/loop -run 'TestParseVerdictStructuredJSON|TestEngineUsesReviewRunnerWhenConfigured' -v
+```
+
+预期：structured JSON verdict 会被解析成 `approved/reason/warnings`，自由文本仍回退为原始 reason。
+
 ### 验证 session 增量持久化
 
 ```bash

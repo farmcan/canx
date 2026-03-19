@@ -82,7 +82,7 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 
 ### 当前缺口说明
 
-`EventStore`、`Rooms`、`server.go`（Dashboard）已在代码里，`P0 实时事件流` 和 `P0.5 SSE 长连接 tail` 已完成：`Engine` 每轮会即时写入 `session_started`、`task_state`、`turn_completed`，同步刷新 `run.json`，`/api/runs/:id/events/stream` 也会持续跟随新事件。当前剩余的主要缺口是 **session detail 还没有完全做成运行中逐 turn 的结构化展示**，以及 **AI reviewer 还没有稳定 verdict schema**。
+`EventStore`、`Rooms`、`server.go`（Dashboard）已在代码里，`P0 实时事件流` 和 `P0.5 SSE 长连接 tail` 已完成：`Engine` 每轮会即时写入 `session_started`、`task_state`、`turn_completed`，同步刷新 `run.json`，`/api/runs/:id/events/stream` 也会持续跟随新事件。当前剩余的主要缺口是 **session detail 还没有完全做成运行中逐 turn 的结构化展示**，以及 **review verdict 还没有接入更强的策略执行与 UI 呈现**。
 
 ### 优先级表
 
@@ -107,7 +107,7 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 
 随后：
   P3.5 session 增量持久化    → ✅ 已完成：session report 会在 `session_started` 和每次 `turn_completed` 后即时刷新
-  P7 AI reviewer policy      → 在可选 ReviewRunner 之上定义更稳定的 verdict schema
+  P7 AI reviewer policy      → ✅ 已完成最小版：ReviewRunner 支持稳定 JSON verdict schema（approved/reason/warnings），自由文本仍可回退
 
 再往后（复杂度高）：
   P4  AppServerRunner      → internal/codex 新增实现，不改 Engine 控制流

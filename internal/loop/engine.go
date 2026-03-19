@@ -183,7 +183,13 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 				MaxTurns: 1,
 			})
 			if reviewErr == nil {
-				reviewResult.Reason = strings.TrimSpace(reviewRun.Output)
+				if verdict, ok := review.ParseVerdict(reviewRun.Output); ok {
+					reviewResult.Approved = verdict.Approved
+					reviewResult.Reason = verdict.Reason
+					reviewResult.Warnings = verdict.Warnings
+				} else {
+					reviewResult.Reason = strings.TrimSpace(reviewRun.Output)
+				}
 			}
 		}
 
@@ -421,7 +427,7 @@ func buildReviewPrompt(task tasks.Task, workerOutput, validationOutput string) s
 		builder.WriteString("\n\nValidation output:\n")
 		builder.WriteString(strings.TrimSpace(validationOutput))
 	}
-	builder.WriteString("\n\nReply with a concise review verdict and key issue summary.")
+	builder.WriteString("\n\nReply with ONLY valid JSON using this schema:\n{\"approved\":true,\"reason\":\"approved\",\"warnings\":[]}\nDo not include markdown fences or extra text.")
 	return builder.String()
 }
 

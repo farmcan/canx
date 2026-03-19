@@ -288,6 +288,9 @@ func TestBuildReviewPromptOmitsDocsAndIncludesValidation(t *testing.T) {
 	if !strings.Contains(prompt, "make test:\nFAIL") {
 		t.Fatalf("review prompt missing validation output: %q", prompt)
 	}
+	if !strings.Contains(prompt, `{"approved":true,"reason":"approved","warnings":[]}`) {
+		t.Fatalf("review prompt missing structured schema example: %q", prompt)
+	}
 	if strings.Contains(prompt, "Reference docs:") {
 		t.Fatalf("review prompt should omit docs: %q", prompt)
 	}
@@ -296,7 +299,7 @@ func TestBuildReviewPromptOmitsDocsAndIncludesValidation(t *testing.T) {
 func TestEngineUsesReviewRunnerWhenConfigured(t *testing.T) {
 	t.Parallel()
 
-	reviewer := &fakeRunner{results: []codex.Result{{Output: "review says reject"}}}
+	reviewer := &fakeRunner{results: []codex.Result{{Output: `{"approved":false,"reason":"review says reject","warnings":["missing tests"]}`}}}
 	engine := Engine{
 		Runner:       &fakeRunner{results: []codex.Result{{Output: "worker output [canx:stop]"}}},
 		ReviewRunner: reviewer,
@@ -322,6 +325,12 @@ func TestEngineUsesReviewRunnerWhenConfigured(t *testing.T) {
 	}
 	if got, want := outcome.Turns[0].Review.Reason, "review says reject"; got != want {
 		t.Fatalf("review reason = %q, want %q", got, want)
+	}
+	if outcome.Turns[0].Review.Approved {
+		t.Fatal("expected reviewer verdict to override approval to false")
+	}
+	if got, want := len(outcome.Turns[0].Review.Warnings), 1; got != want {
+		t.Fatalf("warnings len = %d, want %d", got, want)
 	}
 }
 
@@ -463,8 +472,8 @@ func (p fixedPlanner) Plan(_ context.Context, _ string) ([]tasks.Task, error) {
 }
 
 type fakeRunner struct {
-	results []codex.Result
-	index   int
+	results    []codex.Result
+	index      int
 	lastPrompt string
 }
 

@@ -90,7 +90,7 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 |---|---|---|
 | **P0** | 实时事件流 | ✅ 已完成：`Engine` 运行中实时写事件，并同步刷新 `run.json`。 |
 | **P0.5** | SSE 跟随新事件 | ✅ 已完成：`/api/runs/:id/events/stream` 现在是长连接 tail，不再只是一次性读历史。 |
-| **P1** | 角色分化上下文注入 | 🟡 进行中：Planner 已切到 `goal + README + AGENTS`，不再注入 docs 和上一轮 turn；Worker 仍保留完整上下文。下一步是把 reviewer 也纳入同一套 role builder。 |
+| **P1** | 角色分化上下文注入 | ✅ 已完成最小版：Planner 使用轻量上下文，Worker 使用完整上下文，Reviewer 现在也有独立 prompt builder；ReviewRunner 仍是可选。 |
 | **P2** | 结构化 stop payload | ✅ 已完成最小版：支持 `[canx:stop:{"summary":"...","files_changed":[...]}]`，Engine 会写回 `task.Summary` / `task.FilesChanged`，并在后续 worker prompt 里注入 completed task 结论。 |
 | **P3** | 错误模式持久化 | ✅ 已完成最小版：validation 失败会去重追加到 `.canx/patterns.md`，`workspace.Load` 会加载它，worker prompt 注入 `Known failure patterns`。 |
 | **P4** | AppServerRunner | 替换 `codex exec -` subprocess，接入 Codex App Server JSON-RPC。Thread 跨 turn 持久，上下文原生保留。实现复杂度较高，先把接口设计好再替换。 |
@@ -102,12 +102,12 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 
 ```
 近期（可并行，代码不重叠）：
-  P1  角色分化 prompt      → 已完成 planner/worker 分流；下一步补 reviewer role
+  P1  角色分化 prompt      → ✅ 已完成 planner/worker/reviewer 三种 role 的最小边界
   P0.75 UI 自动刷新        → ✅ 已完成：SSE 事件会驱动 runs/tasks/actions/session 面板刷新
 
 随后：
-  P1.5 reviewer role        → 让 reviewer 也走 role-aware prompt builder
   P3.5 session 增量持久化    → 让 session detail 在运行中也持续刷新
+  P7 AI reviewer policy      → 在可选 ReviewRunner 之上定义更稳定的 verdict schema
 
 再往后（复杂度高）：
   P4  AppServerRunner      → internal/codex 新增实现，不改 Engine 控制流

@@ -25,12 +25,14 @@ const escalateMarker = "[canx:escalate]"
 const (
 	promptRolePlanner = "planner"
 	promptRoleWorker  = "worker"
+	promptRoleReviewer = "reviewer"
 )
 
 var ErrMissingRunner = errors.New("missing runner")
 
 type Engine struct {
 	Runner      codex.Runner
+	ReviewRunner codex.Runner
 	Workdir     string
 	TurnTimeout time.Duration
 	Sessions    *sessions.Registry
@@ -162,6 +164,17 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		reviewResult := review.Evaluate(review.Result{
 			Validated: validationPassed,
 		})
+		if e.ReviewRunner != nil {
+			reviewPrompt := buildReviewPrompt(outcome.Tasks[activeIndex], result.Output, validationOutput)
+			reviewRun, reviewErr := e.ReviewRunner.Run(turnCtx, codex.Request{
+				Prompt:   reviewPrompt,
+				Workdir:  e.Workdir,
+				MaxTurns: 1,
+			})
+			if reviewErr == nil {
+				reviewResult.Reason = strings.TrimSpace(reviewRun.Output)
+			}
+		}
 
 		outcome.Turns = append(outcome.Turns, Turn{
 			Number:           turn,
@@ -366,6 +379,22 @@ func buildPrompt(role, goal string, repo workspace.Context, plannedTasks []tasks
 		builder.WriteString("\n\nRespond with progress, and include [canx:stop] when the task is complete.")
 	}
 	return builder.String(), docsUsed
+}
+
+func buildReviewPrompt(task tasks.Task, workerOutput, validationOutput string) string {
+	var builder strings.Builder
+	builder.WriteString("Review task:\n")
+	builder.WriteString(task.Title)
+	builder.WriteString(": ")
+	builder.WriteString(task.Goal)
+	builder.WriteString("\n\nWorker output:\n")
+	builder.WriteString(strings.TrimSpace(workerOutput))
+	if strings.TrimSpace(validationOutput) != "" {
+		builder.WriteString("\n\nValidation output:\n")
+		builder.WriteString(strings.TrimSpace(validationOutput))
+	}
+	builder.WriteString("\n\nReply with a concise review verdict and key issue summary.")
+	return builder.String()
 }
 
 func updateTaskStatuses(items []tasks.Task, activeIndex int, done bool) []tasks.Task {

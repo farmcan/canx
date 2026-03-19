@@ -273,6 +273,58 @@ func TestBuildPromptOmitsDocsForPlannerRole(t *testing.T) {
 	}
 }
 
+func TestBuildReviewPromptOmitsDocsAndIncludesValidation(t *testing.T) {
+	t.Parallel()
+
+	prompt := buildReviewPrompt(
+		tasks.Task{ID: "t1", Title: "Task 1", Goal: "add healthz"},
+		"worker changed files",
+		"make test:\nFAIL",
+	)
+
+	if !strings.Contains(prompt, "Review task:") {
+		t.Fatalf("review prompt missing task section: %q", prompt)
+	}
+	if !strings.Contains(prompt, "make test:\nFAIL") {
+		t.Fatalf("review prompt missing validation output: %q", prompt)
+	}
+	if strings.Contains(prompt, "Reference docs:") {
+		t.Fatalf("review prompt should omit docs: %q", prompt)
+	}
+}
+
+func TestEngineUsesReviewRunnerWhenConfigured(t *testing.T) {
+	t.Parallel()
+
+	reviewer := &fakeRunner{results: []codex.Result{{Output: "review says reject"}}}
+	engine := Engine{
+		Runner:       &fakeRunner{results: []codex.Result{{Output: "worker output [canx:stop]"}}},
+		ReviewRunner: reviewer,
+		Workdir:      ".",
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:     "ship mvp",
+		MaxTurns: 1,
+	}, workspace.Context{Root: ".", Readme: "readme", Docs: []workspace.Document{{Path: "docs/x.md", Content: "doc"}}})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if reviewer.lastPrompt == "" {
+		t.Fatal("expected reviewer prompt to be captured")
+	}
+	if !strings.Contains(reviewer.lastPrompt, "worker output") {
+		t.Fatalf("reviewer prompt missing worker output: %q", reviewer.lastPrompt)
+	}
+	if strings.Contains(reviewer.lastPrompt, "Reference docs:") {
+		t.Fatalf("reviewer prompt should omit docs: %q", reviewer.lastPrompt)
+	}
+	if got, want := outcome.Turns[0].Review.Reason, "review says reject"; got != want {
+		t.Fatalf("review reason = %q, want %q", got, want)
+	}
+}
+
 func TestBuildPromptKeepsDocsForWorkerRole(t *testing.T) {
 	t.Parallel()
 
@@ -413,9 +465,11 @@ func (p fixedPlanner) Plan(_ context.Context, _ string) ([]tasks.Task, error) {
 type fakeRunner struct {
 	results []codex.Result
 	index   int
+	lastPrompt string
 }
 
-func (r *fakeRunner) Run(_ context.Context, _ codex.Request) (codex.Result, error) {
+func (r *fakeRunner) Run(_ context.Context, req codex.Request) (codex.Result, error) {
+	r.lastPrompt = req.Prompt
 	result := r.results[r.index]
 	if r.index < len(r.results)-1 {
 		r.index++

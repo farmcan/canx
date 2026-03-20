@@ -28,6 +28,7 @@ It does not do:
 
 - `bin/codex-fork`: thin CLI wrapper
 - `bin/codex-fork-ghostty`: Ghostty-first launcher
+- `bin/codex-fork-here`: single-command Ghostty launcher for the current directory
 - `lib/codex_fork.sh`: shell helpers
 - `test/test.sh`: shell tests
 - `docs/design.md`: design notes and boundaries
@@ -58,6 +59,11 @@ bash codex-fork/bin/codex-fork pick \
 ```bash
 bash codex-fork/bin/codex-fork-ghostty \
   ~/.codex/sessions/2026/03/13/rollout-xxxx.jsonl \
+  "Inspect reviewer path and propose a smaller design"
+```
+
+```bash
+bash codex-fork/bin/codex-fork-here \
   "Inspect reviewer path and propose a smaller design"
 ```
 
@@ -118,6 +124,7 @@ The status command prints:
 ## UX Notes
 
 - `codex-fork-ghostty` extracts the parent session id from the session file automatically.
+- `codex-fork-here` auto-detects the most recent session whose `cwd` matches your current directory.
 - The Ghostty window title includes the session id and delegated task text.
 - Default launch mode is optimized for zero interaction. If you disable bypass mode, Codex may ask for workspace trust, directory choice, and edit confirmations.
 - The generated `codex fork` prompt still includes explicit instructions for those confirmations so the delegated child session stays on the handoff path.

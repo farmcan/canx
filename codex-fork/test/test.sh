@@ -358,6 +358,27 @@ EOF
   [[ "$output" == *"next: inspect result.md and workspace changes"* ]] || fail "status should suggest inspection after completion"
 }
 
+test_latest_session_file_for_cwd_prefers_matching_cwd() {
+  setup
+  init_git_repo
+  write_session_history
+
+  local session_file
+  session_file="$(latest_session_file_for_cwd "$TMP_DIR/repo" "$TMP_DIR/codex-home/sessions")"
+
+  assert_eq "$session_file" "$TMP_DIR/codex-home/sessions/2026/03/20/rollout-2026-03-20T10-00-00-session-new.jsonl" "should pick newest session matching cwd"
+}
+
+test_latest_session_file_for_cwd_returns_empty_when_missing() {
+  setup
+  write_session_history
+
+  local session_file
+  session_file="$(latest_session_file_for_cwd "$TMP_DIR/other" "$TMP_DIR/codex-home/sessions")"
+
+  assert_eq "$session_file" "" "should return empty when no matching cwd session exists"
+}
+
 test_build_ghostty_open_command() {
   setup
 
@@ -401,6 +422,45 @@ test_ghostty_wrapper_prepares_run_and_prints_command() {
   [[ "$output" == *"--title='Codex Fork [session-123] 拆出 review 子任务'"* ]] || fail "wrapper should print title argument"
 }
 
+test_here_wrapper_detects_current_cwd_session() {
+  setup
+  init_git_repo
+  write_session_history
+
+  local output
+  output="$(
+    cd "$TMP_DIR/repo"
+    CODEX_HOME="$TMP_DIR/codex-home" \
+      CODEX_FORK_GHOSTTY_DRY_RUN=1 \
+      bash "$ROOT_DIR/bin/codex-fork-here" \
+      "拆出 review 子任务" \
+      "$TMP_DIR/run"
+  )"
+
+  assert_file_contains "$TMP_DIR/run/status.json" '"session_id": "session-new"'
+  [[ "$output" == *"detected session file: $TMP_DIR/codex-home/sessions/2026/03/20/rollout-2026-03-20T10-00-00-session-new.jsonl"* ]] || fail "here wrapper should print detected session file"
+  [[ "$output" == *"ghostty command:"* ]] || fail "here wrapper should delegate to ghostty wrapper"
+}
+
+test_here_wrapper_fails_when_no_matching_session() {
+  setup
+  mkdir -p "$TMP_DIR/empty"
+
+  local output
+  if output="$(
+    cd "$TMP_DIR/empty"
+    CODEX_HOME="$TMP_DIR/codex-home" \
+      CODEX_FORK_GHOSTTY_DRY_RUN=1 \
+      bash "$ROOT_DIR/bin/codex-fork-here" \
+      "拆出 review 子任务" \
+      "$TMP_DIR/run" 2>&1
+  )"; then
+    fail "here wrapper should fail when no matching session exists"
+  fi
+
+  [[ "$output" == *"no Codex session file found for cwd: $TMP_DIR/empty"* ]] || fail "here wrapper should explain missing cwd session"
+}
+
 run_tests() {
   test_extract_session_id
   test_extract_cwd
@@ -420,9 +480,13 @@ run_tests() {
   test_cli_pick_selects_requested_session_file
   test_cli_status_reports_pending_run
   test_cli_status_reports_completed_run
+  test_latest_session_file_for_cwd_prefers_matching_cwd
+  test_latest_session_file_for_cwd_returns_empty_when_missing
   test_build_window_title
   test_build_ghostty_open_command
   test_ghostty_wrapper_prepares_run_and_prints_command
+  test_here_wrapper_detects_current_cwd_session
+  test_here_wrapper_fails_when_no_matching_session
 }
 
 run_tests

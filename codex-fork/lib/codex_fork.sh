@@ -70,6 +70,23 @@ latest_session_file() {
   list_session_files "$sessions_dir" | head -n 1
 }
 
+latest_session_file_for_cwd() {
+  local target_cwd="$1"
+  local sessions_dir="${2:-$(codex_sessions_dir)}"
+  local session_file
+  local session_cwd
+
+  while IFS= read -r session_file; do
+    session_cwd="$(session_cwd_from_file "$session_file")"
+    if [[ "$session_cwd" == "$target_cwd" ]]; then
+      printf '%s\n' "$session_file"
+      return 0
+    fi
+  done < <(list_session_files "$sessions_dir")
+
+  return 0
+}
+
 pick_session_file() {
   local sessions_dir="${1:-$(codex_sessions_dir)}"
   local -a sessions=()

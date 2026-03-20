@@ -14,8 +14,16 @@ type PlannerRunner interface {
 }
 
 type CodxPlanner struct {
-	Runner PlannerRunner
+	Runner        PlannerRunner
 	PromptBuilder func(goal string) string
+}
+
+type plannerTask struct {
+	ID           string   `json:"id"`
+	Title        string   `json:"title"`
+	Goal         string   `json:"goal"`
+	Status       string   `json:"status"`
+	PlannedFiles []string `json:"planned_files"`
 }
 
 const plannerPrompt = `You are a software delivery supervisor. Given a goal, output a JSON array of tasks.
@@ -71,8 +79,18 @@ func parsePlanJSON(output string) ([]Task, error) {
 				continue
 			}
 
-			var items []Task
-			if err := json.Unmarshal([]byte(output[start:end+1]), &items); err == nil {
+			var planned []plannerTask
+			if err := json.Unmarshal([]byte(output[start:end+1]), &planned); err == nil {
+				items := make([]Task, 0, len(planned))
+				for _, item := range planned {
+					items = append(items, Task{
+						ID:           item.ID,
+						Title:        item.Title,
+						Goal:         item.Goal,
+						Status:       item.Status,
+						PlannedFiles: append([]string(nil), item.PlannedFiles...),
+					})
+				}
 				return items, nil
 			}
 		}

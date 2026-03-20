@@ -20,6 +20,11 @@ type Task struct {
 	Goal               string
 	Status             string
 	Owner              string
+	OwnerSessionID     string
+	ParentTaskID       string
+	SpawnDepth         int
+	DependsOn          []string
+	PlannedFiles       []string
 	FilesInScope       []string
 	FilesChanged       []string
 	BlockedBy          []string

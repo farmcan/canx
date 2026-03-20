@@ -2,13 +2,14 @@ package loop
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/farmcan/canx/internal/codex"
@@ -64,7 +65,16 @@ type stopPayload struct {
 	FilesChanged []string `json:"files_changed"`
 }
 
+type taskExecution struct {
+	Index       int
+	TaskSession sessions.Session
+	Prompt      string
+	Result      codex.Result
+	Err         error
+}
+
 func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Outcome, error) {
+	cfg = cfg.WithDefaults()
 	if err := cfg.Validate(); err != nil {
 		return Outcome{}, err
 	}
@@ -131,156 +141,230 @@ func (e Engine) Run(ctx context.Context, cfg Config, repo workspace.Context) (Ou
 		return Outcome{}, err
 	}
 	for turn := 1; turn <= cfg.MaxTurns; turn++ {
-		activeIndex := firstActiveTaskIndex(outcome.Tasks)
-		if activeIndex == -1 {
+		if firstActiveTaskIndex(outcome.Tasks) == -1 {
 			session, _ = e.Sessions.Close(session.ID)
 			outcome.Session = session
 			outcome.Decision = Decision{Action: ActionStop, Reason: "all tasks complete"}
 			return outcome, nil
 		}
 
-		turnCtx := ctx
-		cancel := func() {}
-		if e.TurnTimeout > 0 {
-			turnCtx, cancel = context.WithTimeout(ctx, e.TurnTimeout)
-		}
-
-		prompt, docsUsed := buildPrompt(promptRoleWorker, cfg.Goal, repo, outcome.Tasks, outcome.Turns, activeIndex)
-		if outcome.PromptDocsUsed == 0 {
-			outcome.PromptDocsUsed = docsUsed
-		}
-		result, err := e.Runner.Run(turnCtx, codex.Request{
-			Prompt:   prompt,
-			Workdir:  e.Workdir,
-			MaxTurns: 1,
-		})
-		if err != nil {
-			// If the runner failed but the output contains a stop or escalate
-			// marker, treat it as a partial success: the worker completed its
-			// reasoning but the process exited non-zero (e.g. read-only sandbox
-			// blocking writes).  Surface the output instead of dropping it.
-			if !strings.Contains(result.Output, stopMarker) && !strings.Contains(result.Output, escalateMarker) {
-				cancel()
-				return Outcome{}, err
+		runnable := selectRunnableTasks(outcome.Tasks, cfg.MaxWorkers)
+		if len(runnable) == 0 {
+			activeIndex := firstActiveTaskIndex(outcome.Tasks)
+			if activeIndex != -1 {
+				runnable = []int{activeIndex}
 			}
 		}
-
-		validationPassed, validationOutput := runValidation(turnCtx, e.Workdir, cfg.ValidationCommands)
-		if validationOutput != "" {
-			_ = persistFailurePattern(e.Workdir, validationOutput)
-			if repo.Root == e.Workdir {
-				repo.Patterns = loadPatternsFile(e.Workdir)
-			}
+		if len(runnable) == 0 {
+			break
 		}
-		cancel()
-		reviewResult := review.Evaluate(review.Result{
-			Validated: validationPassed,
-		})
-		if e.ReviewRunner != nil {
-			reviewPrompt := buildReviewPrompt(outcome.Tasks[activeIndex], result.Output, validationOutput)
-			reviewRun, reviewErr := e.ReviewRunner.Run(turnCtx, codex.Request{
-				Prompt:   reviewPrompt,
-				Workdir:  e.Workdir,
-				MaxTurns: 1,
-			})
-			if reviewErr == nil {
-				if verdict, ok := review.ParseVerdict(reviewRun.Output); ok {
-					reviewResult.Approved = verdict.Approved
-					reviewResult.Reason = verdict.Reason
-					reviewResult.Warnings = verdict.Warnings
-				} else {
-					reviewResult.Reason = strings.TrimSpace(reviewRun.Output)
+
+		executions := make([]taskExecution, 0, len(runnable))
+		executionCh := make(chan taskExecution, len(runnable))
+		var wg sync.WaitGroup
+		for _, activeIndex := range runnable {
+			taskSessionID := outcome.Tasks[activeIndex].OwnerSessionID
+			taskSession := sessions.Session{}
+			var err error
+			if taskSessionID == "" {
+				taskSession, err = e.Sessions.Spawn(sessions.SpawnRequest{
+					Label: outcome.Tasks[activeIndex].ID,
+					Mode:  sessions.ModePersistent,
+					CWD:   e.Workdir,
+				})
+				if err != nil {
+					return Outcome{}, err
+				}
+				outcome.Tasks[activeIndex].OwnerSessionID = taskSession.ID
+			} else {
+				taskSession, err = e.Sessions.Get(taskSessionID)
+				if err != nil {
+					return Outcome{}, err
 				}
 			}
+
+			prompt, docsUsed := buildPrompt(promptRoleWorker, cfg.Goal, repo, outcome.Tasks, outcome.Turns, activeIndex)
+			if outcome.PromptDocsUsed == 0 && docsUsed > 0 {
+				outcome.PromptDocsUsed = docsUsed
+			}
+
+			wg.Add(1)
+			go func(index int, prompt string, taskSession sessions.Session) {
+				defer wg.Done()
+				turnCtx := ctx
+				cancel := func() {}
+				if e.TurnTimeout > 0 {
+					turnCtx, cancel = context.WithTimeout(ctx, e.TurnTimeout)
+				}
+				defer cancel()
+
+				result, err := e.Runner.Run(turnCtx, codex.Request{
+					Prompt:     prompt,
+					Workdir:    e.Workdir,
+					MaxTurns:   1,
+					SessionKey: taskSession.ID,
+				})
+				if err != nil && !hasStopSignal(result.Output) && !hasEscalateSignal(result.Output) {
+					executionCh <- taskExecution{Index: index, TaskSession: taskSession, Prompt: prompt, Result: result, Err: err}
+					return
+				}
+				executionCh <- taskExecution{Index: index, TaskSession: taskSession, Prompt: prompt, Result: result, Err: nil}
+			}(activeIndex, prompt, taskSession)
+		}
+		wg.Wait()
+		close(executionCh)
+		for execution := range executionCh {
+			if execution.Err != nil {
+				return Outcome{}, execution.Err
+			}
+			executions = append(executions, execution)
+		}
+		sort.Slice(executions, func(i, j int) bool {
+			return executions[i].Index < executions[j].Index
+		})
+
+		roundSawStop := false
+		roundSawValidationApproval := false
+		roundSawEscalation := false
+		for _, execution := range executions {
+			validationPassed, validationOutput := runValidation(ctx, e.Workdir, cfg.ValidationCommands)
+			if validationOutput != "" {
+				_ = persistFailurePattern(e.Workdir, validationOutput)
+				if repo.Root == e.Workdir {
+					repo.Patterns = loadPatternsFile(e.Workdir)
+				}
+			}
+
+			reviewResult := review.Evaluate(review.Result{
+				Validated: validationPassed,
+			})
+			if e.ReviewRunner != nil {
+				reviewPrompt := buildReviewPrompt(outcome.Tasks[execution.Index], execution.Result.Output, validationOutput)
+				reviewRun, reviewErr := e.ReviewRunner.Run(ctx, codex.Request{
+					Prompt:   reviewPrompt,
+					Workdir:  e.Workdir,
+					MaxTurns: 1,
+				})
+				if reviewErr == nil {
+					if verdict, ok := review.ParseVerdict(reviewRun.Output); ok {
+						reviewResult.Approved = verdict.Approved
+						reviewResult.Reason = verdict.Reason
+						reviewResult.Warnings = verdict.Warnings
+					} else {
+						reviewResult.Reason = strings.TrimSpace(reviewRun.Output)
+					}
+				}
+			}
+
+			turnNumber := len(outcome.Turns) + 1
+			outcome.Turns = append(outcome.Turns, Turn{
+				Number:           turnNumber,
+				Prompt:           execution.Prompt,
+				RunnerResult:     execution.Result,
+				ValidationPassed: validationPassed,
+				ValidationOutput: validationOutput,
+				Review:           reviewResult,
+			})
+			outcome.Logs = append(outcome.Logs, runlog.Entry{
+				Goal:     cfg.Goal,
+				Decision: reviewDecision(validationPassed, execution.Result.Output, turnNumber, cfg.MaxTurns),
+				Summary:  summarizeTurn(turnNumber, execution.Result.Output, validationPassed),
+			})
+			session, err = e.Sessions.Steer(session.ID, summarizeTurn(turnNumber, execution.Result.Output, validationPassed))
+			if err != nil {
+				return Outcome{}, err
+			}
+			outcome.Session = session
+			if err := e.emitSession(runlog.SessionReport{
+				Session:   outcome.Session,
+				Runtime:   execution.Result.Runtime,
+				Decision:  "running",
+				Reason:    summarizeTurn(turnNumber, execution.Result.Output, validationPassed),
+				TurnCount: len(outcome.Turns),
+				Turns:     snapshotSessionTurns(outcome.Turns),
+				Tasks:     cloneTasks(outcome.Tasks),
+			}); err != nil {
+				return Outcome{}, err
+			}
+
+			payload := parseStopPayload(execution.Result.Output)
+			for _, request := range parseSpawnRequests(execution.Result.Output) {
+				if ok, _ := canApproveSpawn(outcome.Tasks[execution.Index], outcome.Tasks, request, cfg); ok {
+					outcome.Tasks = append(outcome.Tasks, tasks.Task{
+						ID:           buildChildTaskID(outcome.Tasks[execution.Index], request, childCount(outcome.Tasks, outcome.Tasks[execution.Index].ID)+1),
+						Title:        request.Title,
+						Goal:         request.Goal,
+						Status:       tasks.StatusPending,
+						ParentTaskID: outcome.Tasks[execution.Index].ID,
+						SpawnDepth:   outcome.Tasks[execution.Index].SpawnDepth + 1,
+						PlannedFiles: append([]string(nil), request.PlannedFiles...),
+					})
+				}
+			}
+			taskDone := reviewResult.Approved || hasStopSignal(execution.Result.Output)
+			outcome.Tasks = updateTaskStatuses(outcome.Tasks, execution.Index, taskDone)
+			if payload != nil {
+				outcome.Tasks[execution.Index].Summary = payload.Summary
+				outcome.Tasks[execution.Index].FilesChanged = payload.FilesChanged
+			}
+			if err := e.emitEvent(runlog.Event{
+				Kind:       "turn_completed",
+				SessionID:  execution.TaskSession.ID,
+				TaskID:     outcome.Tasks[execution.Index].ID,
+				Turn:       turnNumber,
+				Message:    summarizePrompt(execution.Prompt),
+				Output:     execution.Result.Output,
+				Validated:  validationPassed,
+				Validation: validationOutput,
+				Runtime: map[string]any{
+					"model":      execution.Result.Runtime.Model,
+					"provider":   execution.Result.Runtime.Provider,
+					"sandbox":    execution.Result.Runtime.Sandbox,
+					"approval":   execution.Result.Runtime.Approval,
+					"session_id": execution.Result.Runtime.SessionID,
+				},
+			}); err != nil {
+				return Outcome{}, err
+			}
+			if err := e.emitEvent(runlog.Event{
+				Kind:      "task_state",
+				SessionID: execution.TaskSession.ID,
+				TaskID:    outcome.Tasks[execution.Index].ID,
+				Message:   outcome.Tasks[execution.Index].Title,
+				Tasks:     cloneTasks(outcome.Tasks),
+			}); err != nil {
+				return Outcome{}, err
+			}
+
+			if hasEscalateSignal(execution.Result.Output) {
+				outcome.Tasks = blockActiveTask(outcome.Tasks, execution.Index)
+				roundSawEscalation = true
+			}
+			if hasStopSignal(execution.Result.Output) {
+				roundSawStop = true
+			}
+			if reviewResult.Approved {
+				roundSawValidationApproval = true
+			}
 		}
 
-		outcome.Turns = append(outcome.Turns, Turn{
-			Number:           turn,
-			Prompt:           prompt,
-			RunnerResult:     result,
-			ValidationPassed: validationPassed,
-			ValidationOutput: validationOutput,
-			Review:           reviewResult,
-		})
-		outcome.Logs = append(outcome.Logs, runlog.Entry{
-			Goal:     cfg.Goal,
-			Decision: reviewDecision(validationPassed, result.Output, turn, cfg.MaxTurns),
-			Summary:  summarizeTurn(turn, result.Output, validationPassed),
-		})
-		session, err = e.Sessions.Steer(session.ID, summarizeTurn(turn, result.Output, validationPassed))
-		if err != nil {
-			return Outcome{}, err
-		}
-		outcome.Session = session
-		if err := e.emitSession(runlog.SessionReport{
-			Session:   outcome.Session,
-			Runtime:   result.Runtime,
-			Decision:  "running",
-			Reason:    summarizeTurn(turn, result.Output, validationPassed),
-			TurnCount: len(outcome.Turns),
-			Turns:     snapshotSessionTurns(outcome.Turns),
-			Tasks:     cloneTasks(outcome.Tasks),
-		}); err != nil {
-			return Outcome{}, err
-		}
-		payload := parseStopPayload(result.Output)
-		taskDone := reviewResult.Approved || hasStopSignal(result.Output)
-		outcome.Tasks = updateTaskStatuses(outcome.Tasks, activeIndex, taskDone)
-		if payload != nil {
-			outcome.Tasks[activeIndex].Summary = payload.Summary
-			outcome.Tasks[activeIndex].FilesChanged = payload.FilesChanged
-		}
-		if err := e.emitEvent(runlog.Event{
-			Kind:       "turn_completed",
-			SessionID:  session.ID,
-			TaskID:     outcome.Tasks[activeIndex].ID,
-			Turn:       turn,
-			Message:    summarizePrompt(prompt),
-			Output:     result.Output,
-			Validated:  validationPassed,
-			Validation: validationOutput,
-			Runtime: map[string]any{
-				"model":      result.Runtime.Model,
-				"provider":   result.Runtime.Provider,
-				"sandbox":    result.Runtime.Sandbox,
-				"approval":   result.Runtime.Approval,
-				"session_id": result.Runtime.SessionID,
-			},
-		}); err != nil {
-			return Outcome{}, err
-		}
-		if err := e.emitEvent(runlog.Event{
-			Kind:      "task_state",
-			SessionID: session.ID,
-			TaskID:    outcome.Tasks[activeIndex].ID,
-			Message:   outcome.Tasks[activeIndex].Title,
-			Tasks:     cloneTasks(outcome.Tasks),
-		}); err != nil {
-			return Outcome{}, err
-		}
-
-		switch {
-		case strings.Contains(result.Output, escalateMarker):
-			outcome.Tasks = blockActiveTask(outcome.Tasks, activeIndex)
+		if roundSawEscalation {
 			session, _ = e.Sessions.Close(session.ID)
 			outcome.Session = session
 			outcome.Decision = Decision{Action: ActionEscalate, Reason: "worker requested escalation"}
 			return outcome, nil
-		case hasStopSignal(result.Output):
-			if firstActiveTaskIndex(outcome.Tasks) != -1 {
-				continue
-			}
+		}
+		if firstActiveTaskIndex(outcome.Tasks) == -1 {
 			session, _ = e.Sessions.Close(session.ID)
 			outcome.Session = session
-			outcome.Decision = Decision{Action: ActionStop, Reason: "runner requested stop"}
-			return outcome, nil
-		case reviewResult.Approved:
-			if firstActiveTaskIndex(outcome.Tasks) != -1 {
-				continue
+			switch {
+			case roundSawStop:
+				outcome.Decision = Decision{Action: ActionStop, Reason: "runner requested stop"}
+			case roundSawValidationApproval:
+				outcome.Decision = Decision{Action: ActionStop, Reason: "validation passed"}
+			default:
+				outcome.Decision = Decision{Action: ActionStop, Reason: "all tasks complete"}
 			}
-			session, _ = e.Sessions.Close(session.ID)
-			outcome.Session = session
-			outcome.Decision = Decision{Action: ActionStop, Reason: "validation passed"}
 			return outcome, nil
 		}
 	}
@@ -529,34 +613,21 @@ func summarizeTurn(turn int, output string, validated bool) string {
 	return "turn=" + strconv.Itoa(turn) + " " + status + " output=" + summary
 }
 
-func hasStopSignal(output string) bool {
-	return strings.Contains(output, stopMarker) || strings.Contains(output, "[canx:stop:")
-}
-
-func parseStopPayload(output string) *stopPayload {
-	start := strings.Index(output, "[canx:stop:")
-	if start == -1 {
-		return nil
-	}
-	body := output[start+len("[canx:stop:"):]
-	end := strings.LastIndex(body, "]")
-	if end == -1 {
-		return nil
-	}
-	body = body[:end]
-	var payload stopPayload
-	if err := json.Unmarshal([]byte(body), &payload); err != nil {
-		return nil
-	}
-	return &payload
-}
-
 func summarizePrompt(prompt string) string {
 	prompt = strings.TrimSpace(prompt)
 	if len(prompt) > 400 {
 		return prompt[:400] + "...(truncated)"
 	}
 	return prompt
+}
+
+func buildChildTaskID(parent tasks.Task, request spawnRequest, ordinal int) string {
+	title := strings.TrimSpace(strings.ToLower(request.Title))
+	title = strings.ReplaceAll(title, " ", "-")
+	if title == "" {
+		title = "child"
+	}
+	return parent.ID + "-child-" + strconv.Itoa(ordinal) + "-" + title
 }
 
 func formatValidationFailure(command, output string) string {

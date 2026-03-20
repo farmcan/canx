@@ -57,15 +57,15 @@ For larger projects, this makes AI-assisted development slower and less reliable
 ## Reference docs
 
 - Start here: `START_HERE.md`
-- Docs index: `docs/README.md`
-- Product intent: `docs/2026-03-18-product-intent.md`
+- Project context: `docs/ai-agent-context.md`
 - Runbook: `docs/runbook.md`
 - Testing methods: `docs/testing-methods.md`
 - Prompt templates: `docs/prompt-templates.md`
+- Framework comparison: `docs/2026-03-18-framework-comparison.md`
 - Collaboration room design: `docs/2026-03-19-collab-room-design.md`
 - UI observability design: `docs/2026-03-19-ui-observability-design.md`
-- Evaluation landscape: `docs/research/2026-03-18-evaluation-landscape.md`
-- Codex/OpenClaw/Ralph/ACP notes: `docs/research/2026-03-18-codex-openclaw-ralph-acp.md`
+- Scheduler design: `docs/superpowers/specs/2026-03-20-multi-codex-scheduler-design.md`
+- App-server runner design: `docs/superpowers/specs/2026-03-20-appserver-runner-design.md`
 
 ## Initial principle
 
@@ -84,7 +84,7 @@ If you are a fresh agent session, read these files first:
 1. `START_HERE.md`
 2. `README.md`
 3. `AGENTS.md`
-4. `docs/README.md`
+4. `docs/ai-agent-context.md`
 5. `docs/runbook.md`
 6. `docs/prompt-templates.md`
 
@@ -138,7 +138,9 @@ The current local MVP now includes:
 
 - Ralph-lite bounded loop control
 - lightweight task planning wired into the live engine
-- Codex runner abstraction
+- Codex runner abstraction with `exec`, `mock`, and minimal `appserver` modes
+- bounded multi-worker scheduler with task-level parallelism
+- supervisor-approved dynamic child task spawning
 - lightweight session registry inspired by ACP/session models
 - file-backed run/event persistence under `.canx/runs/`
 - minimal local dashboard for runs, tasks, and event streams

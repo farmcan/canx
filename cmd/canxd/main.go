@@ -43,26 +43,43 @@ type Options struct {
 }
 
 func parseFlags() (loop.Config, Options, string, []string) {
+	cfg, opts, command, args, err := parseFlagsFromArgs(flag.CommandLine, os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "canx: %v\n", err)
+		os.Exit(2)
+	}
+	return cfg, opts, command, args
+}
+
+func parseFlagsFromArgs(fs *flag.FlagSet, args []string) (loop.Config, Options, string, []string, error) {
 	var (
-		goal     = flag.String("goal", "bootstrap canx", "high-level goal for this run")
-		maxTurns = flag.Int("max-turns", 1, "maximum number of loop turns")
-		budget   = flag.Int("budget-seconds", 0, "total run budget in seconds (0 means disabled)")
-		repoPath = flag.String("repo", ".", "target repository path")
-		codexBin = flag.String("codex-bin", "codex", "codex binary path")
-		runner   = flag.String("runner", "exec", "runner mode: exec or mock")
-		planner  = flag.String("planner", "single", "planner mode: single or codx")
-		timeout  = flag.Duration("turn-timeout", 30*time.Second, "timeout per loop turn")
+		goal               = fs.String("goal", "bootstrap canx", "high-level goal for this run")
+		maxTurns           = fs.Int("max-turns", 1, "maximum number of loop turns")
+		budget             = fs.Int("budget-seconds", 0, "total run budget in seconds (0 means disabled)")
+		maxWorkers         = fs.Int("max-workers", 2, "maximum concurrent workers")
+		maxSpawnDepth      = fs.Int("max-spawn-depth", 1, "maximum dynamic spawn depth per task")
+		maxChildrenPerTask = fs.Int("max-children-per-task", 2, "maximum child tasks a task may spawn")
+		repoPath           = fs.String("repo", ".", "target repository path")
+		codexBin           = fs.String("codex-bin", "codex", "codex binary path")
+		runner             = fs.String("runner", "exec", "runner mode: exec or mock")
+		planner            = fs.String("planner", "single", "planner mode: single or codx")
+		timeout            = fs.Duration("turn-timeout", 30*time.Second, "timeout per loop turn")
 	)
 	var validations multiFlag
-	flag.Var(&validations, "validate", "validation command to run after each turn (repeatable)")
+	fs.Var(&validations, "validate", "validation command to run after each turn (repeatable)")
 
-	flag.Parse()
+	if err := fs.Parse(args); err != nil {
+		return loop.Config{}, Options{}, "", nil, err
+	}
 
-	command, args := defaultCommand(flag.Args())
+	command, remainingArgs := defaultCommand(fs.Args())
 	return loop.Config{
-			Goal:          *goal,
-			MaxTurns:      *maxTurns,
-			BudgetSeconds: *budget,
+			Goal:               *goal,
+			MaxTurns:           *maxTurns,
+			BudgetSeconds:      *budget,
+			MaxWorkers:         *maxWorkers,
+			MaxSpawnDepth:      *maxSpawnDepth,
+			MaxChildrenPerTask: *maxChildrenPerTask,
 		}, Options{
 			RepoPath:    *repoPath,
 			CodexBin:    *codexBin,
@@ -70,7 +87,7 @@ func parseFlags() (loop.Config, Options, string, []string) {
 			PlannerMode: *planner,
 			TurnTimeout: *timeout,
 			Validations: validations,
-		}, command, args
+		}, command, remainingArgs, nil
 }
 
 func defaultCommand(args []string) (string, []string) {
@@ -84,6 +101,12 @@ func run(cfg loop.Config, opts Options) (string, error) {
 	switch opts.RunnerMode {
 	case "", "exec":
 		return runWithRunner(cfg, opts, codex.NewExecRunnerInDir(opts.CodexBin, opts.RepoPath))
+	case "appserver":
+		runner, err := codex.NewAppServerRunner(opts.CodexBin)
+		if err != nil {
+			return "", err
+		}
+		return runWithRunner(cfg, opts, runner)
 	case "mock":
 		return runWithRunner(cfg, opts, codex.NewMockRunner(codex.Result{
 			Output: "mock worker progress [canx:stop]",
@@ -94,6 +117,7 @@ func run(cfg loop.Config, opts Options) (string, error) {
 }
 
 func runWithRunner(cfg loop.Config, opts Options, runner codex.Runner) (string, error) {
+	cfg = cfg.WithDefaults()
 	if err := cfg.Validate(); err != nil {
 		return "", err
 	}
@@ -415,7 +439,7 @@ func updateRunProgress(store runlog.EventStore, initial runlog.RunRecord, runID,
 	if record.StartedAt.IsZero() {
 		record.StartedAt = initial.StartedAt
 	}
-	if event.SessionID != "" {
+	if event.Kind == "session_started" && event.SessionID != "" {
 		record.SessionID = event.SessionID
 	}
 	if event.Turn > record.TurnCount {

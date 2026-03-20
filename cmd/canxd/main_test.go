@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,6 +90,25 @@ func TestRunRejectsUnknownPlannerMode(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatal("expected planner mode error")
+	}
+}
+
+func TestRunReturnsErrorWhenAppServerRunnerCannotStart(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	writeFile(t, tmp+"/README.md", "readme")
+
+	_, err := run(loop.Config{
+		Goal:     "ship mvp",
+		MaxTurns: 1,
+	}, Options{
+		RepoPath:   tmp,
+		RunnerMode: "appserver",
+		CodexBin:   "definitely-not-a-real-codex-binary",
+	})
+	if err == nil {
+		t.Fatal("expected appserver runner startup error")
 	}
 }
 
@@ -238,6 +258,64 @@ func TestInspectSessionsListReturnsEmptyWhenDirectoryMissing(t *testing.T) {
 	if output != "(no sessions)" {
 		t.Fatalf("output = %q", output)
 	}
+}
+
+func TestParseFlagsFromArgsIncludesSchedulerDefaultsAndOverrides(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defaults", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, opts, command, args, err := parseFlagsFromArgs(flag.NewFlagSet("test", flag.ContinueOnError), []string{})
+		if err != nil {
+			t.Fatalf("parseFlagsFromArgs() error = %v", err)
+		}
+		if cfg.MaxWorkers != 2 {
+			t.Fatalf("MaxWorkers = %d, want 2", cfg.MaxWorkers)
+		}
+		if cfg.MaxSpawnDepth != 1 {
+			t.Fatalf("MaxSpawnDepth = %d, want 1", cfg.MaxSpawnDepth)
+		}
+		if cfg.MaxChildrenPerTask != 2 {
+			t.Fatalf("MaxChildrenPerTask = %d, want 2", cfg.MaxChildrenPerTask)
+		}
+		if command != "run" || len(args) != 0 {
+			t.Fatalf("command,args = %q,%#v want run,nil", command, args)
+		}
+		if opts.RepoPath != "." {
+			t.Fatalf("RepoPath = %q, want .", opts.RepoPath)
+		}
+	})
+
+	t.Run("overrides", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, _, _, _, err := parseFlagsFromArgs(flag.NewFlagSet("test", flag.ContinueOnError), []string{
+			"-goal", "ship scheduler",
+			"-max-turns", "3",
+			"-max-workers", "4",
+			"-max-spawn-depth", "2",
+			"-max-children-per-task", "5",
+		})
+		if err != nil {
+			t.Fatalf("parseFlagsFromArgs() error = %v", err)
+		}
+		if cfg.Goal != "ship scheduler" {
+			t.Fatalf("Goal = %q, want ship scheduler", cfg.Goal)
+		}
+		if cfg.MaxTurns != 3 {
+			t.Fatalf("MaxTurns = %d, want 3", cfg.MaxTurns)
+		}
+		if cfg.MaxWorkers != 4 {
+			t.Fatalf("MaxWorkers = %d, want 4", cfg.MaxWorkers)
+		}
+		if cfg.MaxSpawnDepth != 2 {
+			t.Fatalf("MaxSpawnDepth = %d, want 2", cfg.MaxSpawnDepth)
+		}
+		if cfg.MaxChildrenPerTask != 5 {
+			t.Fatalf("MaxChildrenPerTask = %d, want 5", cfg.MaxChildrenPerTask)
+		}
+	})
 }
 
 func writeFile(t *testing.T, path, content string) {

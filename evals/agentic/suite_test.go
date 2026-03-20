@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,6 +50,21 @@ func TestAgenticQuickSuite(t *testing.T) {
 				{ID: "t2", Title: "Task 2", Goal: "do second thing", Status: tasks.StatusPending},
 			}},
 		}, loop.Config{Goal: "do both things", MaxTurns: 4}),
+		runEvalCase(t, "spawn_child_task", loop.Engine{
+			Runner: &promptEvalRunner{responses: map[string][]codex.Result{
+				"Parent Task": {
+					{Output: `need help [canx:spawn:{"title":"Child Task","goal":"write regression test","planned_files":["internal/loop/engine_test.go"]}]`},
+					{Output: `parent done [canx:stop]`},
+				},
+				"Child Task": {
+					{Output: `child done [canx:stop]`},
+				},
+			}},
+			Workdir: makeRepo(t),
+			Planner: fixedPlanner{tasks: []tasks.Task{
+				{ID: "parent", Title: "Parent Task", Goal: "implement parent", Status: tasks.StatusPending, PlannedFiles: []string{"internal/loop/engine.go"}},
+			}},
+		}, loop.Config{Goal: "ship scheduler", MaxTurns: 3, MaxWorkers: 2, MaxSpawnDepth: 1, MaxChildrenPerTask: 2}),
 	}
 
 	for _, result := range results {
@@ -204,6 +221,11 @@ type fixedPlanner struct {
 
 type plannerEvalRunner struct{}
 
+type promptEvalRunner struct {
+	mu        sync.Mutex
+	responses map[string][]codex.Result
+}
+
 func (plannerEvalRunner) Run(ctx context.Context, prompt string) (string, error) {
 	result, err := codex.NewExecRunner("codex").Run(ctx, codex.Request{
 		Prompt:   prompt,
@@ -216,8 +238,41 @@ func (plannerEvalRunner) Run(ctx context.Context, prompt string) (string, error)
 	return result.Output, nil
 }
 
+func (r *promptEvalRunner) Run(_ context.Context, req codex.Request) (codex.Result, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	title := evalActiveTaskTitle(req.Prompt)
+	queue := r.responses[title]
+	if len(queue) == 0 {
+		return codex.Result{}, nil
+	}
+	result := queue[0]
+	r.responses[title] = queue[1:]
+	return result, nil
+}
+
 func (p fixedPlanner) Plan(_ context.Context, _ string) ([]tasks.Task, error) {
 	return p.tasks, nil
+}
+
+func evalActiveTaskTitle(prompt string) string {
+	marker := "Active task:\n- ["
+	start := strings.Index(prompt, marker)
+	if start == -1 {
+		return ""
+	}
+	line := prompt[start+len(marker):]
+	statusEnd := strings.Index(line, "] ")
+	if statusEnd == -1 {
+		return ""
+	}
+	line = line[statusEnd+2:]
+	titleEnd := strings.Index(line, ": ")
+	if titleEnd == -1 {
+		return ""
+	}
+	return line[:titleEnd]
 }
 
 func makeRepo(t *testing.T) string {

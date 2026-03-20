@@ -12,9 +12,10 @@ type Runner interface {
 }
 
 type Request struct {
-	Prompt   string
-	Workdir  string
-	MaxTurns int
+	Prompt     string
+	Workdir    string
+	MaxTurns   int
+	SessionKey string
 }
 
 func (r Request) Validate() error {

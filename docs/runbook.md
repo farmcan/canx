@@ -41,6 +41,7 @@ go test ./evals/agentic/... -v -run TestAgenticQuickSuite
 {"name":"stop_signal","success":true,"decision":"stop","turns":1,"tasks":1,"done_tasks":1,...}
 {"name":"validation_feedback","success":true,"decision":"stop","turns":2,...}
 {"name":"multi_task_sequence","success":true,"decision":"stop","turns":2,"tasks":2,"done_tasks":2,...}
+{"name":"spawn_child_task","success":true,"decision":"stop","turns":3,"tasks":2,"done_tasks":2,...}
 ```
 
 ### 真实 Codex 集成 smoke（需要 Codex，约 20s）
@@ -92,6 +93,43 @@ go run ./cmd/canxd \
 ```
 
 > **沙箱说明：** Codex 默认以 `read-only` 模式运行，worker 无法修改文件。要允许写入，需要在 `~/.codex/config.toml` 设置 `sandbox = "workspace-write"`，或者在 Codex 配置里开启写权限。只读模式下 worker 会诚实报告无法完成写操作并输出 `[canx:stop]`，CanX 会正确识别这个信号（不会崩溃）。
+
+### App Server runner（最小版，`approval=never`）
+
+```bash
+go run ./cmd/canxd \
+  -goal "Read README.md and summarize it in 2 sentences. Reply with your summary then [canx:stop]." \
+  -runner appserver \
+  -repo . \
+  -max-turns 1 \
+  -turn-timeout 90s
+```
+
+当前限制：
+
+- 只支持 `approval=never`
+- 只做最终输出聚合，不做 UI 实时 delta 展示
+- 复用的是 task 对应的持久 thread，不再每轮 fork 新 `codex exec`
+
+### 多 worker 调度（默认已开启安全值）
+
+```bash
+go run ./cmd/canxd \
+  -goal "YOUR GOAL HERE" \
+  -runner exec \
+  -planner codx \
+  -max-workers 2 \
+  -max-spawn-depth 1 \
+  -max-children-per-task 2 \
+  -repo .
+```
+
+说明：
+
+- `-max-workers` 控制最多并发 worker 数
+- `-max-spawn-depth` 控制动态子任务最大层数
+- `-max-children-per-task` 控制单个 task 最多派生多少 child task
+- 默认值分别是 `2 / 1 / 2`
 
 ### 使用 AI 规划器分解任务
 
@@ -191,6 +229,30 @@ go test ./internal/loop -run TestEnginePersistsValidationFailurePattern -v
 - `.canx/patterns.md` 被创建
 - 失败输出会被写入文件
 - 重复失败不会无限追加相同内容
+
+### 验证并行调度与动态 spawn
+
+```bash
+go test ./internal/loop -run 'TestEngineRunsIndependentTasksInParallel|TestEngineCreatesChildTaskFromApprovedSpawnRequest' -v
+```
+
+预期：
+
+- 独立 task 会在同一轮内并发执行
+- worker 发出的合法 `spawn request` 会创建 child task
+- child task 完成后会写回结构化 summary
+
+### 验证 AppServerRunner 协议与 thread 复用
+
+```bash
+go test ./internal/codex -run 'TestAppServerProtocol|TestAppServerConn|TestAppServerRunner' -v
+```
+
+预期：
+
+- `initialize/thread/start/turn/start` 协议测试通过
+- fake app-server 连接层能正确分发 response/notification
+- 相同 `SessionKey` 复用同一 thread，不同 `SessionKey` 不串线
 
 ### 验证 room/message API
 

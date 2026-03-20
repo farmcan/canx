@@ -9,9 +9,12 @@ const (
 )
 
 var (
-	ErrMissingGoal     = errors.New("missing goal")
-	ErrInvalidMaxTurns = errors.New("invalid max turns")
-	ErrInvalidBudget   = errors.New("invalid budget")
+	ErrMissingGoal               = errors.New("missing goal")
+	ErrInvalidMaxTurns           = errors.New("invalid max turns")
+	ErrInvalidBudget             = errors.New("invalid budget")
+	ErrInvalidMaxWorkers         = errors.New("invalid max workers")
+	ErrInvalidMaxSpawnDepth      = errors.New("invalid max spawn depth")
+	ErrInvalidMaxChildrenPerTask = errors.New("invalid max children per task")
 )
 
 type Config struct {
@@ -19,6 +22,22 @@ type Config struct {
 	MaxTurns           int
 	BudgetSeconds      int
 	ValidationCommands []string
+	MaxWorkers         int
+	MaxSpawnDepth      int
+	MaxChildrenPerTask int
+}
+
+func (c Config) WithDefaults() Config {
+	if c.MaxWorkers == 0 {
+		c.MaxWorkers = 2
+	}
+	if c.MaxSpawnDepth == 0 {
+		c.MaxSpawnDepth = 1
+	}
+	if c.MaxChildrenPerTask == 0 {
+		c.MaxChildrenPerTask = 2
+	}
+	return c
 }
 
 func (c Config) Validate() error {
@@ -29,6 +48,12 @@ func (c Config) Validate() error {
 		return ErrInvalidMaxTurns
 	case c.BudgetSeconds < 0:
 		return ErrInvalidBudget
+	case c.MaxWorkers < 0:
+		return ErrInvalidMaxWorkers
+	case c.MaxSpawnDepth < 0:
+		return ErrInvalidMaxSpawnDepth
+	case c.MaxChildrenPerTask < 0:
+		return ErrInvalidMaxChildrenPerTask
 	default:
 		return nil
 	}

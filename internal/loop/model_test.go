@@ -13,8 +13,11 @@ func TestConfigValidateRequiresGoalAndMaxTurns(t *testing.T) {
 		{
 			name: "valid config",
 			config: Config{
-				Goal:     "ship task model",
-				MaxTurns: 3,
+				Goal:               "ship task model",
+				MaxTurns:           3,
+				MaxWorkers:         2,
+				MaxSpawnDepth:      1,
+				MaxChildrenPerTask: 2,
 			},
 		},
 		{
@@ -34,9 +37,45 @@ func TestConfigValidateRequiresGoalAndMaxTurns(t *testing.T) {
 		{
 			name: "invalid budget",
 			config: Config{
-				Goal:          "ship task model",
-				MaxTurns:      1,
-				BudgetSeconds: -1,
+				Goal:               "ship task model",
+				MaxTurns:           1,
+				BudgetSeconds:      -1,
+				MaxWorkers:         2,
+				MaxSpawnDepth:      1,
+				MaxChildrenPerTask: 2,
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid max workers",
+			config: Config{
+				Goal:               "ship task model",
+				MaxTurns:           1,
+				MaxWorkers:         -1,
+				MaxSpawnDepth:      1,
+				MaxChildrenPerTask: 2,
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid max spawn depth",
+			config: Config{
+				Goal:               "ship task model",
+				MaxTurns:           1,
+				MaxWorkers:         2,
+				MaxSpawnDepth:      -1,
+				MaxChildrenPerTask: 2,
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid max children per task",
+			config: Config{
+				Goal:               "ship task model",
+				MaxTurns:           1,
+				MaxWorkers:         2,
+				MaxSpawnDepth:      1,
+				MaxChildrenPerTask: -1,
 			},
 			wantErr: true,
 		},

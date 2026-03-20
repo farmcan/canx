@@ -18,7 +18,8 @@ func TestRequestValidateRequiresPrompt(t *testing.T) {
 		{
 			name: "valid request",
 			req: Request{
-				Prompt: "add task model",
+				Prompt:     "add task model",
+				SessionKey: "session-1",
 			},
 		},
 		{
@@ -41,11 +42,20 @@ func TestRequestValidateRequiresPrompt(t *testing.T) {
 	}
 }
 
+func TestRequestValidateIgnoresSessionKeyWithoutPrompt(t *testing.T) {
+	t.Parallel()
+
+	req := Request{SessionKey: "session-1"}
+	if err := req.Validate(); err == nil {
+		t.Fatal("expected validation error for missing prompt")
+	}
+}
+
 func TestExecRunnerRejectsMissingBinary(t *testing.T) {
 	t.Parallel()
 
 	runner := NewExecRunner("definitely-not-a-real-codex-binary")
-	_, err := runner.Run(context.Background(), Request{Prompt: "hello"})
+	_, err := runner.Run(context.Background(), Request{Prompt: "hello", SessionKey: "session-1"})
 	if err == nil {
 		t.Fatal("expected exec runner error")
 	}

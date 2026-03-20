@@ -135,3 +135,24 @@ codex
 		t.Fatalf("first id = %q, want %q", got, want)
 	}
 }
+
+func TestCodxPlannerParsesPlannedFiles(t *testing.T) {
+	t.Parallel()
+
+	runner := &fakePlannerRunner{output: `[
+		{"id":"task-1","title":"Add test","goal":"add a failing test for X","status":"pending","planned_files":["internal/loop/engine_test.go"]}
+	]`}
+
+	planner := CodxPlanner{Runner: runner}
+	items, err := planner.Plan(context.Background(), "implement feature X with TDD")
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+
+	if got, want := len(items[0].PlannedFiles), 1; got != want {
+		t.Fatalf("planned files len = %d, want %d", got, want)
+	}
+	if got, want := items[0].PlannedFiles[0], "internal/loop/engine_test.go"; got != want {
+		t.Fatalf("planned file = %q, want %q", got, want)
+	}
+}

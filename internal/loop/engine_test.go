@@ -5,11 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
 
 	"github.com/farmcan/canx/internal/codex"
+	"github.com/farmcan/canx/internal/runlog"
 	"github.com/farmcan/canx/internal/sessions"
 	"github.com/farmcan/canx/internal/tasks"
 	"github.com/farmcan/canx/internal/workspace"
@@ -441,6 +443,181 @@ func TestEngineRunsMultipleTasksInSequence(t *testing.T) {
 	}
 }
 
+func TestEngineRunsIndependentTasksInParallel(t *testing.T) {
+	t.Parallel()
+
+	runner := &parallelRunner{
+		results: []codex.Result{
+			{Output: "task 1 done [canx:stop]"},
+			{Output: "task 2 done [canx:stop]"},
+		},
+		release: make(chan struct{}),
+	}
+	events := []string{}
+	var eventsMu sync.Mutex
+	engine := Engine{
+		Runner:  runner,
+		Workdir: ".",
+		Planner: fixedPlanner{tasks: []tasks.Task{
+			{ID: "t1", Title: "Task 1", Goal: "do first thing", Status: tasks.StatusPending, PlannedFiles: []string{"a.go"}},
+			{ID: "t2", Title: "Task 2", Goal: "do second thing", Status: tasks.StatusPending, PlannedFiles: []string{"b.go"}},
+		}},
+		EventSink: func(event runlog.Event) error {
+			eventsMu.Lock()
+			defer eventsMu.Unlock()
+			events = append(events, event.Kind)
+			return nil
+		},
+	}
+
+	done := make(chan struct{})
+	var outcome Outcome
+	var err error
+	go func() {
+		outcome, err = engine.Run(context.Background(), Config{
+			Goal:       "do both things",
+			MaxTurns:   1,
+			MaxWorkers: 2,
+		}, workspace.Context{Root: ".", Readme: "readme"})
+		close(done)
+	}()
+
+	runner.waitForConcurrentCalls(t, 2)
+	close(runner.release)
+	<-done
+
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if got, want := len(outcome.Turns), 2; got != want {
+		t.Fatalf("turns = %d, want %d", got, want)
+	}
+	for _, task := range outcome.Tasks {
+		if task.Status != tasks.StatusDone {
+			t.Fatalf("task %s status = %q, want done", task.ID, task.Status)
+		}
+		if task.OwnerSessionID == "" {
+			t.Fatalf("task %s missing owner session id", task.ID)
+		}
+	}
+	if outcome.Tasks[0].OwnerSessionID == outcome.Tasks[1].OwnerSessionID {
+		t.Fatalf("owner session ids should differ, got %q", outcome.Tasks[0].OwnerSessionID)
+	}
+	turnCompleted := 0
+	for _, kind := range events {
+		if kind == "turn_completed" {
+			turnCompleted++
+		}
+	}
+	if got, want := turnCompleted, 2; got != want {
+		t.Fatalf("turn_completed events = %d, want %d", got, want)
+	}
+}
+
+func TestEngineCreatesChildTaskFromApprovedSpawnRequest(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner: &promptTaskRunner{responses: map[string][]codex.Result{
+			"Parent Task": {
+				{Output: `need help [canx:spawn:{"title":"Child Task","goal":"write regression test","reason":"parallelize test work","planned_files":["internal/loop/engine_test.go"]}]`},
+				{Output: `parent done [canx:stop:{"summary":"implemented parent","files_changed":["internal/loop/engine.go"]}]`},
+			},
+			"Child Task": {
+				{Output: `child done [canx:stop:{"summary":"implemented child","files_changed":["internal/loop/engine_test.go"]}]`},
+			},
+		}},
+		Workdir: ".",
+		Planner: fixedPlanner{tasks: []tasks.Task{
+			{ID: "parent", Title: "Parent Task", Goal: "implement parent logic", Status: tasks.StatusPending, PlannedFiles: []string{"internal/loop/engine.go"}},
+		}},
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:               "ship scheduler",
+		MaxTurns:           3,
+		MaxWorkers:         2,
+		MaxSpawnDepth:      1,
+		MaxChildrenPerTask: 2,
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if got, want := len(outcome.Tasks), 2; got != want {
+		t.Fatalf("tasks len = %d, want %d", got, want)
+	}
+	child := outcome.Tasks[1]
+	if child.ParentTaskID != "parent" {
+		t.Fatalf("child parent task id = %q, want parent", child.ParentTaskID)
+	}
+	if child.SpawnDepth != 1 {
+		t.Fatalf("child spawn depth = %d, want 1", child.SpawnDepth)
+	}
+	if child.Status != tasks.StatusDone {
+		t.Fatalf("child status = %q, want done", child.Status)
+	}
+	if child.Summary != "implemented child" {
+		t.Fatalf("child summary = %q, want implemented child", child.Summary)
+	}
+}
+
+func TestEnginePassesTaskOwnerSessionIDAsRequestSessionKey(t *testing.T) {
+	t.Parallel()
+
+	runner := &capturingRunner{result: codex.Result{Output: "done [canx:stop]"}}
+	engine := Engine{
+		Runner:  runner,
+		Workdir: ".",
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:     "ship session binding",
+		MaxTurns: 1,
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if len(runner.requests) != 1 {
+		t.Fatalf("requests len = %d, want 1", len(runner.requests))
+	}
+	if got, want := runner.requests[0].SessionKey, outcome.Tasks[0].OwnerSessionID; got != want {
+		t.Fatalf("request session key = %q, want %q", got, want)
+	}
+}
+
+func TestEngineRejectsSpawnRequestBeyondDepthLimit(t *testing.T) {
+	t.Parallel()
+
+	engine := Engine{
+		Runner: &promptTaskRunner{responses: map[string][]codex.Result{
+			"Parent Task": {
+				{Output: `can't spawn more [canx:spawn:{"title":"Too Deep","goal":"do child","planned_files":["child.go"]}] [canx:stop]`},
+			},
+		}},
+		Workdir: ".",
+		Planner: fixedPlanner{tasks: []tasks.Task{
+			{ID: "parent", Title: "Parent Task", Goal: "implement parent logic", Status: tasks.StatusPending, SpawnDepth: 1, PlannedFiles: []string{"internal/loop/engine.go"}},
+		}},
+	}
+
+	outcome, err := engine.Run(context.Background(), Config{
+		Goal:               "ship scheduler",
+		MaxTurns:           2,
+		MaxWorkers:         1,
+		MaxSpawnDepth:      1,
+		MaxChildrenPerTask: 2,
+	}, workspace.Context{Root: ".", Readme: "readme"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if got, want := len(outcome.Tasks), 1; got != want {
+		t.Fatalf("tasks len = %d, want %d", got, want)
+	}
+}
+
 func TestBuildPromptIncludesCompletedTaskSummaries(t *testing.T) {
 	t.Parallel()
 
@@ -475,15 +652,121 @@ type fakeRunner struct {
 	results    []codex.Result
 	index      int
 	lastPrompt string
+	mu         sync.Mutex
 }
 
 func (r *fakeRunner) Run(_ context.Context, req codex.Request) (codex.Result, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.lastPrompt = req.Prompt
 	result := r.results[r.index]
 	if r.index < len(r.results)-1 {
 		r.index++
 	}
 	return result, nil
+}
+
+type parallelRunner struct {
+	results     []codex.Result
+	release     chan struct{}
+	mu          sync.Mutex
+	index       int
+	inFlight    int
+	maxInFlight int
+}
+
+func (r *parallelRunner) Run(_ context.Context, _ codex.Request) (codex.Result, error) {
+	r.mu.Lock()
+	current := r.index
+	if current >= len(r.results) {
+		current = len(r.results) - 1
+	}
+	r.index++
+	r.inFlight++
+	if r.inFlight > r.maxInFlight {
+		r.maxInFlight = r.inFlight
+	}
+	r.mu.Unlock()
+
+	<-r.release
+
+	r.mu.Lock()
+	r.inFlight--
+	result := r.results[current]
+	r.mu.Unlock()
+	return result, nil
+}
+
+func (r *parallelRunner) waitForConcurrentCalls(t *testing.T, want int) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		r.mu.Lock()
+		maxInFlight := r.maxInFlight
+		r.mu.Unlock()
+		if maxInFlight >= want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("runner max in-flight calls did not reach %d", want)
+}
+
+type promptTaskRunner struct {
+	mu        sync.Mutex
+	responses map[string][]codex.Result
+}
+
+type capturingRunner struct {
+	requests []codex.Request
+	result   codex.Result
+	mu       sync.Mutex
+}
+
+func (r *capturingRunner) Run(_ context.Context, req codex.Request) (codex.Result, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.requests = append(r.requests, req)
+	return r.result, nil
+}
+
+func (r *promptTaskRunner) Run(_ context.Context, req codex.Request) (codex.Result, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	activeTitle := activeTaskTitleFromPrompt(req.Prompt)
+	for title, queue := range r.responses {
+		if activeTitle != title {
+			continue
+		}
+		if len(queue) == 0 {
+			return codex.Result{}, nil
+		}
+		result := queue[0]
+		r.responses[title] = queue[1:]
+		return result, nil
+	}
+	return codex.Result{}, nil
+}
+
+func activeTaskTitleFromPrompt(prompt string) string {
+	marker := "Active task:\n- ["
+	start := strings.Index(prompt, marker)
+	if start == -1 {
+		return ""
+	}
+	line := prompt[start+len(marker):]
+	statusEnd := strings.Index(line, "] ")
+	if statusEnd == -1 {
+		return ""
+	}
+	line = line[statusEnd+2:]
+	titleEnd := strings.Index(line, ": ")
+	if titleEnd == -1 {
+		return ""
+	}
+	return line[:titleEnd]
 }
 
 type slowRunner struct {

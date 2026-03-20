@@ -29,8 +29,8 @@
 | 模块 | 位置 | 状态 |
 |---|---|---|
 | 任务模型 | `internal/tasks` | ✅ Task + Planner 接口 + CodxPlanner |
-| 编排引擎 | `internal/loop` | ✅ Engine.Run，多任务顺序执行，stop/escalate 信号 |
-| Codex 接入 | `internal/codex` | ✅ ExecRunner（`codex exec -`），MockRunner |
+| 编排引擎 | `internal/loop` | ✅ Engine.Run，支持 bounded 多 task 调度、静态并行、受控动态 spawn、stop/escalate 信号 |
+| Codex 接入 | `internal/codex` | ✅ ExecRunner、MockRunner、最小版 AppServerRunner（`approval=never`） |
 | Validation gate | `internal/loop` | ✅ `sh -c` 命令，失败输出反馈到下一轮 prompt |
 | Session 持久化 | `internal/runlog` + `internal/sessions` | ✅ JSON 写入 `.canx/sessions/` |
 | CLI | `cmd/canxd` | ✅ `run` + `sessions list/show` 子命令 |
@@ -42,7 +42,7 @@
 
 ```
 make test           → 11 包全绿
-make eval           → 3 个 agentic eval case 全 pass（mock）
+make eval           → 4 个 agentic eval case 全 pass（mock，含 spawn_child_task）
 make report         → 生成 evals/reports/latest.md
 真实 Codex smoke    → decision=stop，约 22s
 CLI mock run        → decision=stop，约 1.6s
@@ -63,13 +63,15 @@ loop.Engine.Run(ctx, Config, workspace.Context)
     │       ├── SingleTaskPlanner  （默认）
     │       └── CodxPlanner        （-planner codx，调用 Codex 分解）
     │
-    ├── for each active Task:
+    ├── Scheduler 选择可运行 task（受 MaxWorkers / 冲突控制约束）
+    ├── for each runnable Task:
     │       ├── buildPrompt(goal, repo, tasks, turns)
     │       ├── Runner.Run(prompt) ──→ codex.Result
     │       │       ├── ExecRunner   → codex exec -（真实）
     │       │       └── MockRunner   → 内存（测试）
+    │       ├── parse stop/spawn markers
     │       ├── runValidation(commands) → bool + output
-    │       └── switch: stop / escalate / continue
+    │       └── supervisor 更新 task / child task / stop-escalate
     │
     └── runlog.WriteSessionReport → .canx/sessions/<id>.json
 ```
@@ -93,9 +95,9 @@ loop.Engine.Run(ctx, Config, workspace.Context)
 | **P1** | 角色分化上下文注入 | ✅ 已完成最小版：Planner 使用轻量上下文，Worker 使用完整上下文，Reviewer 现在也有独立 prompt builder；ReviewRunner 仍是可选。 |
 | **P2** | 结构化 stop payload | ✅ 已完成最小版：支持 `[canx:stop:{"summary":"...","files_changed":[...]}]`，Engine 会写回 `task.Summary` / `task.FilesChanged`，并在后续 worker prompt 里注入 completed task 结论。 |
 | **P3** | 错误模式持久化 | ✅ 已完成最小版：validation 失败会去重追加到 `.canx/patterns.md`，`workspace.Load` 会加载它，worker prompt 注入 `Known failure patterns`。 |
-| **P4** | AppServerRunner | 替换 `codex exec -` subprocess，接入 Codex App Server JSON-RPC。Thread 跨 turn 持久，上下文原生保留。实现复杂度较高，先把接口设计好再替换。 |
+| **P4** | AppServerRunner | ✅ 已完成最小版：支持 `codex app-server`、`SessionKey -> ThreadID` 复用、`approval=never`。下一步是 approval 事件处理与更完整的 item/delta 暴露。 |
 | **P5** | Turn Checkpointing | 每轮写检查点，支持 resume，参考 LangGraph checkpointing。 |
-| **P6** | 并发 Worker | 先在 `Config` 加 `MaxConcurrentWorkers` / `MaxSpawnDepth` 预埋，再实现 goroutine 并发调度。 |
+| **P6** | 并发 Worker | ✅ 已完成最小版：支持 `MaxWorkers`、文件级冲突控制、worker 独立 session；下一步是增强调度策略与 resume。 |
 | **P7** | Reviewer Worker | 第二个 Runner 调用做 AI review，替换当前纯规则的 `review.Evaluate`。 |
 
 ### 建议执行顺序

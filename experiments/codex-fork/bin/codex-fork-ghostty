@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FORK_BIN="$ROOT_DIR/bin/codex-fork"
+LIB_FILE="$ROOT_DIR/lib/codex_fork.sh"
+
+source "$LIB_FILE"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  codex-fork-ghostty <session-file> <task-text> [output-dir]
+
+Behavior:
+  1. Prepare an isolated Codex fork run directory.
+  2. Build a Ghostty command that opens a new window.
+  3. In that new Ghostty window, execute the generated launch.sh.
+
+Environment:
+  CODEX_FORK_GHOSTTY_DRY_RUN=1   Print the Ghostty command without opening Ghostty.
+EOF
+}
+
+main() {
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    return 0
+  fi
+
+  if [[ $# -lt 2 || $# -gt 3 ]]; then
+    usage >&2
+    return 1
+  fi
+
+  local session_file="$1"
+  local task_text="$2"
+  local output_dir="${3:-$ROOT_DIR/runs/$(date +%Y%m%d-%H%M%S)}"
+  local launch_file
+  local ghostty_cmd
+  local session_id
+  local window_title
+
+  bash "$FORK_BIN" "$session_file" "$task_text" "$output_dir"
+  launch_file="$(cd "$(dirname "$output_dir")" && pwd)/$(basename "$output_dir")/launch.sh"
+  session_id="$(session_id_from_file "$session_file")"
+  window_title="$(build_window_title "$session_file" "$task_text")"
+  ghostty_cmd="$(build_ghostty_open_command "$launch_file" "$window_title")"
+
+  echo "session id: $session_id"
+  echo "window title: $window_title"
+  echo "ghostty command:"
+  echo "$ghostty_cmd"
+
+  if [[ "${CODEX_FORK_GHOSTTY_DRY_RUN:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  eval "$ghostty_cmd"
+}
+
+main "$@"

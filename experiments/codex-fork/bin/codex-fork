@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LIB_FILE="$ROOT_DIR/lib/codex_fork.sh"
+
+source "$LIB_FILE"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  codex-fork <session-file> <task-text> [output-dir]
+
+Behavior:
+  1. Read the parent Codex session jsonl file.
+  2. Write a task packet with inherited context snapshot.
+  3. Create `status.json` and `result.md` handoff files.
+  4. Print the native `codex fork` command that can launch the child session.
+
+Environment:
+  CODEX_FORK_AUTO_LAUNCH=1   Run the printed command automatically.
+EOF
+}
+
+abspath() {
+  local path="$1"
+  if [[ "$path" = /* ]]; then
+    printf '%s\n' "$path"
+    return 0
+  fi
+  printf '%s/%s\n' "$PWD" "$path"
+}
+
+main() {
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    return 0
+  fi
+
+  if [[ $# -lt 2 || $# -gt 3 ]]; then
+    usage >&2
+    return 1
+  fi
+
+  local session_file
+  session_file="$(abspath "$1")"
+  local task_text="$2"
+  local output_dir="${3:-$ROOT_DIR/runs/$(date +%Y%m%d-%H%M%S)}"
+  output_dir="$(abspath "$output_dir")"
+  local packet_file="$output_dir/task-packet.md"
+  local status_file="$output_dir/status.json"
+  local result_file="$output_dir/result.md"
+  local launch_file="$output_dir/launch.sh"
+  local launch_cmd
+  local workspace_info
+  local workspace_dir
+  local workspace_mode
+
+  workspace_info="$(prepare_child_workspace "$session_file" "$output_dir")"
+  workspace_dir="${workspace_info%%|*}"
+  workspace_mode="${workspace_info##*|}"
+  write_task_packet "$session_file" "$task_text" "$packet_file" 8
+  write_status_file "$status_file" "prepared" "$session_file" "$task_text" "$workspace_dir" "$workspace_mode"
+  write_result_template "$result_file"
+  launch_cmd="$(print_launch_command "$session_file" "$packet_file" "$output_dir" "$workspace_dir")"
+
+  mkdir -p "$output_dir"
+  printf '#!/usr/bin/env bash\nset -euo pipefail\n%s\n' "$launch_cmd" >"$launch_file"
+  chmod +x "$launch_file"
+
+  echo "task packet: $packet_file"
+  echo "status file: $status_file"
+  echo "result file: $result_file"
+  echo "workspace: $workspace_dir ($workspace_mode)"
+  echo "launch script: $launch_file"
+  echo "launch command:"
+  echo "$launch_cmd"
+
+  if [[ "${CODEX_FORK_AUTO_LAUNCH:-0}" == "1" ]]; then
+    "$launch_file"
+  fi
+}
+
+main "$@"

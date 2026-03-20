@@ -25,7 +25,7 @@ assert_eq() {
 assert_file_contains() {
   local file="$1"
   local pattern="$2"
-  if ! grep -Fq "$pattern" "$file"; then
+  if ! grep -Fq -- "$pattern" "$file"; then
     fail "expected [$file] to contain [$pattern]"
   fi
 }
@@ -61,6 +61,16 @@ EOF
 write_repo_session() {
   cat >"$TMP_DIR/repo-session.jsonl" <<EOF
 {"timestamp":"2026-03-20T10:00:00Z","type":"session_meta","payload":{"id":"session-repo","cwd":"$TMP_DIR/repo"}}
+EOF
+}
+
+write_session_history() {
+  mkdir -p "$TMP_DIR/codex-home/sessions/2026/03/20"
+  cat >"$TMP_DIR/codex-home/sessions/2026/03/20/rollout-2026-03-20T09-00-00-session-old.jsonl" <<EOF
+{"timestamp":"2026-03-20T09:00:00Z","type":"session_meta","payload":{"id":"session-old","cwd":"$TMP_DIR/repo"}}
+EOF
+  cat >"$TMP_DIR/codex-home/sessions/2026/03/20/rollout-2026-03-20T10-00-00-session-new.jsonl" <<EOF
+{"timestamp":"2026-03-20T10:00:00Z","type":"session_meta","payload":{"id":"session-new","cwd":"$TMP_DIR/repo"}}
 EOF
 }
 
@@ -154,6 +164,28 @@ test_build_child_prompt() {
   [[ "$prompt" == *"If Codex asks whether to use the session directory or current directory, choose current directory."* ]] || fail "prompt should explain cwd confirmation"
 }
 
+test_print_launch_command_defaults_to_zero_interaction() {
+  setup
+  write_sample_session
+
+  local command
+  command="$(print_launch_command "$TMP_DIR/session.jsonl" "$TMP_DIR/task-packet.md" "$TMP_DIR/run" "$TMP_DIR/run/workspace")"
+
+  [[ "$command" == *"--dangerously-bypass-approvals-and-sandbox"* ]] || fail "launch command should default to bypass approvals"
+  [[ "$command" == *"-C $TMP_DIR/run/workspace"* ]] || fail "launch command should set workspace dir"
+}
+
+test_print_launch_command_can_disable_bypass() {
+  setup
+  write_sample_session
+
+  local command
+  CODEX_FORK_ENABLE_BYPASS=0 command="$(print_launch_command "$TMP_DIR/session.jsonl" "$TMP_DIR/task-packet.md" "$TMP_DIR/run" "$TMP_DIR/run/workspace")"
+
+  [[ "$command" == *"-C $TMP_DIR/run/workspace"* ]] || fail "launch command should still set workspace dir when bypass disabled"
+  [[ "$command" != *"--dangerously-bypass-approvals-and-sandbox"* ]] || fail "launch command should omit bypass flag when disabled"
+}
+
 test_cli_creates_result_handoff_files() {
   setup
   write_sample_session
@@ -208,6 +240,8 @@ test_cli_uses_isolated_workspace_in_launch_script() {
   assert_file_contains "$TMP_DIR/run/status.json" '"workspace_mode": "git-worktree"'
   assert_file_contains "$TMP_DIR/run/status.json" "\"workspace_dir\": \"$TMP_DIR/run/workspace\""
   assert_file_contains "$TMP_DIR/run/launch.sh" "cd $TMP_DIR/run/workspace"
+  assert_file_contains "$TMP_DIR/run/launch.sh" "--dangerously-bypass-approvals-and-sandbox"
+  assert_file_contains "$TMP_DIR/run/launch.sh" "-C $TMP_DIR/run/workspace"
   assert_file_contains "$TMP_DIR/run/launch.sh" "Work in isolated workspace:"
 }
 
@@ -225,6 +259,95 @@ test_cli_uses_absolute_handoff_paths_in_launch_script() {
   assert_file_contains "$ROOT_DIR/.tmp-test/run-rel/launch.sh" "Read the task packet at: $ROOT_DIR/.tmp-test/run-rel/task-packet.md"
   assert_file_contains "$ROOT_DIR/.tmp-test/run-rel/launch.sh" "Write your final result to: $ROOT_DIR/.tmp-test/run-rel/result.md"
   assert_file_contains "$ROOT_DIR/.tmp-test/run-rel/launch.sh" "Update status file: $ROOT_DIR/.tmp-test/run-rel/status.json"
+}
+
+test_cli_can_disable_bypass_flag() {
+  setup
+  init_git_repo
+  write_repo_session
+
+  CODEX_FORK_ENABLE_BYPASS=0 bash "$ROOT_DIR/bin/codex-fork" \
+    "$TMP_DIR/repo-session.jsonl" \
+    "拆出 review 子任务" \
+    "$TMP_DIR/run" >/dev/null
+
+  assert_file_contains "$TMP_DIR/run/launch.sh" "codex fork -C $TMP_DIR/run/workspace"
+  if grep -Fq -- "--dangerously-bypass-approvals-and-sandbox" "$TMP_DIR/run/launch.sh"; then
+    fail "launch script should omit bypass flag when disabled"
+  fi
+}
+
+test_cli_latest_uses_most_recent_session_file() {
+  setup
+  init_git_repo
+  write_session_history
+
+  local output
+  output="$(
+    CODEX_HOME="$TMP_DIR/codex-home" \
+      bash "$ROOT_DIR/bin/codex-fork" latest "拆出 review 子任务" "$TMP_DIR/run"
+  )"
+
+  assert_file_contains "$TMP_DIR/run/status.json" '"session_id": "session-new"'
+  [[ "$output" == *"task packet: $TMP_DIR/run/task-packet.md"* ]] || fail "latest should prepare run files"
+}
+
+test_cli_pick_selects_requested_session_file() {
+  setup
+  init_git_repo
+  write_session_history
+
+  printf '2\n' | CODEX_HOME="$TMP_DIR/codex-home" \
+    bash "$ROOT_DIR/bin/codex-fork" pick "拆出 review 子任务" "$TMP_DIR/run" >/dev/null
+
+  assert_file_contains "$TMP_DIR/run/status.json" '"session_id": "session-old"'
+}
+
+test_cli_status_reports_pending_run() {
+  setup
+  write_sample_session
+
+  bash "$ROOT_DIR/bin/codex-fork" \
+    "$TMP_DIR/session.jsonl" \
+    "拆出 review 子任务" \
+    "$TMP_DIR/run" >/dev/null
+
+  local output
+  output="$(bash "$ROOT_DIR/bin/codex-fork" status "$TMP_DIR/run")"
+
+  [[ "$output" == *"run status: prepared"* ]] || fail "status should print current run status"
+  [[ "$output" == *"result: pending"* ]] || fail "status should report pending result template"
+  [[ "$output" == *"next: run the generated launch script"* ]] || fail "status should suggest next step for pending run"
+}
+
+test_cli_status_reports_completed_run() {
+  setup
+  write_sample_session
+
+  bash "$ROOT_DIR/bin/codex-fork" \
+    "$TMP_DIR/session.jsonl" \
+    "拆出 review 子任务" \
+    "$TMP_DIR/run" >/dev/null
+
+  write_status_file \
+    "$TMP_DIR/run/status.json" \
+    "completed" \
+    "$TMP_DIR/session.jsonl" \
+    "拆出 review 子任务" \
+    "$TMP_DIR/run/workspace" \
+    "dir"
+  cat >"$TMP_DIR/run/result.md" <<'EOF'
+# Completed
+
+Done.
+EOF
+
+  local output
+  output="$(bash "$ROOT_DIR/bin/codex-fork" status "$TMP_DIR/run")"
+
+  [[ "$output" == *"run status: completed"* ]] || fail "status should print completed state"
+  [[ "$output" == *"result: written"* ]] || fail "status should report completed result handoff"
+  [[ "$output" == *"next: inspect result.md and workspace changes"* ]] || fail "status should suggest inspection after completion"
 }
 
 test_build_ghostty_open_command() {
@@ -277,11 +400,18 @@ run_tests() {
   test_write_task_packet
   test_write_status_file
   test_build_child_prompt
+  test_print_launch_command_defaults_to_zero_interaction
+  test_print_launch_command_can_disable_bypass
   test_cli_creates_result_handoff_files
   test_prepare_child_workspace_falls_back_to_subdir
   test_prepare_child_workspace_uses_git_worktree
   test_cli_uses_isolated_workspace_in_launch_script
   test_cli_uses_absolute_handoff_paths_in_launch_script
+  test_cli_can_disable_bypass_flag
+  test_cli_latest_uses_most_recent_session_file
+  test_cli_pick_selects_requested_session_file
+  test_cli_status_reports_pending_run
+  test_cli_status_reports_completed_run
   test_build_window_title
   test_build_ghostty_open_command
   test_ghostty_wrapper_prepares_run_and_prints_command

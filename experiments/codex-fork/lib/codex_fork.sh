@@ -18,6 +18,73 @@ session_cwd_from_file() {
   ' "$session_file" | head -n 1
 }
 
+codex_sessions_dir() {
+  if [[ -n "${CODEX_FORK_SESSIONS_DIR:-}" ]]; then
+    printf '%s\n' "$CODEX_FORK_SESSIONS_DIR"
+    return 0
+  fi
+
+  if [[ -n "${CODEX_HOME:-}" ]]; then
+    printf '%s/sessions\n' "$CODEX_HOME"
+    return 0
+  fi
+
+  printf '%s/.codex/sessions\n' "$HOME"
+}
+
+list_session_files() {
+  local sessions_dir="${1:-$(codex_sessions_dir)}"
+
+  if [[ ! -d "$sessions_dir" ]]; then
+    return 0
+  fi
+
+  find "$sessions_dir" -type f -name '*.jsonl' | LC_ALL=C sort -r
+}
+
+latest_session_file() {
+  local sessions_dir="${1:-$(codex_sessions_dir)}"
+  list_session_files "$sessions_dir" | head -n 1
+}
+
+pick_session_file() {
+  local sessions_dir="${1:-$(codex_sessions_dir)}"
+  local -a sessions=()
+  local line
+  local limit=5
+  local count=0
+  local choice
+  local index
+
+  while IFS= read -r line; do
+    sessions+=("$line")
+    count=$((count + 1))
+    if [[ "$count" -ge "$limit" ]]; then
+      break
+    fi
+  done < <(list_session_files "$sessions_dir")
+
+  if [[ "${#sessions[@]}" -eq 0 ]]; then
+    return 1
+  fi
+
+  echo "Pick a parent session:" >&2
+  for index in "${!sessions[@]}"; do
+    printf '  %d. %s\n' "$((index + 1))" "${sessions[$index]}" >&2
+  done
+  printf 'Choice [1-%d]: ' "${#sessions[@]}" >&2
+  read -r choice
+
+  if [[ ! "$choice" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  if [[ "$choice" -lt 1 || "$choice" -gt "${#sessions[@]}" ]]; then
+    return 1
+  fi
+
+  printf '%s\n' "${sessions[$((choice - 1))]}"
+}
+
 is_git_repo() {
   local dir="$1"
   git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1
@@ -101,6 +168,63 @@ Replace this file with the child Codex summary when the delegated task is done.
 EOF
 }
 
+result_state_from_file() {
+  local result_file="$1"
+
+  if [[ ! -f "$result_file" ]]; then
+    printf 'missing\n'
+    return 0
+  fi
+
+  if grep -Fq '# Result Pending' "$result_file"; then
+    printf 'pending\n'
+    return 0
+  fi
+
+  printf 'written\n'
+}
+
+print_run_status() {
+  local run_dir="$1"
+  local status_file="$run_dir/status.json"
+  local result_file="$run_dir/result.md"
+  local launch_file="$run_dir/launch.sh"
+  local status
+  local session_id
+  local task
+  local workspace_dir
+  local result_state
+  local next_step
+
+  if [[ ! -f "$status_file" ]]; then
+    echo "missing: $status_file" >&2
+    return 1
+  fi
+
+  status="$(jq -r '.status // "unknown"' "$status_file")"
+  session_id="$(jq -r '.session_id // "unknown"' "$status_file")"
+  task="$(jq -r '.task // ""' "$status_file")"
+  workspace_dir="$(jq -r '.workspace_dir // ""' "$status_file")"
+  result_state="$(result_state_from_file "$result_file")"
+
+  if [[ "$status" == "completed" && "$result_state" == "written" ]]; then
+    next_step="inspect result.md and workspace changes"
+  elif [[ -f "$launch_file" ]]; then
+    next_step="run the generated launch script"
+  else
+    next_step="inspect status.json and result.md"
+  fi
+
+  cat <<EOF
+run status: $status
+session id: $session_id
+task: $task
+workspace: $workspace_dir
+result: $result_state
+next: $next_step
+EOF
+}
+
 write_task_packet() {
   local session_file="$1"
   local task_text="$2"
@@ -163,11 +287,21 @@ print_launch_command() {
   local workspace_dir="$4"
   local session_id
   local prompt
+  local -a args
 
   session_id="$(session_id_from_file "$session_file")"
   prompt="$(build_child_prompt "$packet_file" "$output_dir" "$workspace_dir")"
+  args=("codex" "fork")
 
-  printf 'cd %q && codex fork %q %q\n' "$workspace_dir" "$session_id" "$prompt"
+  if [[ "${CODEX_FORK_ENABLE_BYPASS:-1}" == "1" ]]; then
+    args+=("--dangerously-bypass-approvals-and-sandbox")
+  fi
+
+  args+=("-C" "$workspace_dir" "$session_id" "$prompt")
+
+  printf 'cd %q &&' "$workspace_dir"
+  printf ' %q' "${args[@]}"
+  printf '\n'
 }
 
 build_window_title() {

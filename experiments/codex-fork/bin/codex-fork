@@ -11,6 +11,9 @@ usage() {
   cat <<'EOF'
 Usage:
   codex-fork <session-file> <task-text> [output-dir]
+  codex-fork latest <task-text> [output-dir]
+  codex-fork pick <task-text> [output-dir]
+  codex-fork status <run-dir>
 
 Behavior:
   1. Read the parent Codex session jsonl file.
@@ -20,6 +23,7 @@ Behavior:
 
 Environment:
   CODEX_FORK_AUTO_LAUNCH=1   Run the printed command automatically.
+  CODEX_FORK_ENABLE_BYPASS=0 Keep Codex confirmations instead of zero-interaction launch.
 EOF
 }
 
@@ -32,22 +36,10 @@ abspath() {
   printf '%s/%s\n' "$PWD" "$path"
 }
 
-main() {
-  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    usage
-    return 0
-  fi
-
-  if [[ $# -lt 2 || $# -gt 3 ]]; then
-    usage >&2
-    return 1
-  fi
-
-  local session_file
-  session_file="$(abspath "$1")"
+prepare_run() {
+  local session_file="$1"
   local task_text="$2"
-  local output_dir="${3:-$ROOT_DIR/runs/$(date +%Y%m%d-%H%M%S)}"
-  output_dir="$(abspath "$output_dir")"
+  local output_dir="$3"
   local packet_file="$output_dir/task-packet.md"
   local status_file="$output_dir/status.json"
   local result_file="$output_dir/result.md"
@@ -80,6 +72,66 @@ main() {
   if [[ "${CODEX_FORK_AUTO_LAUNCH:-0}" == "1" ]]; then
     "$launch_file"
   fi
+}
+
+main() {
+  local command="${1:-}"
+
+  if [[ "$command" == "-h" || "$command" == "--help" ]]; then
+    usage
+    return 0
+  fi
+
+  if [[ $# -eq 0 ]]; then
+    usage >&2
+    return 1
+  fi
+
+  case "$command" in
+    latest)
+      if [[ $# -lt 2 || $# -gt 3 ]]; then
+        usage >&2
+        return 1
+      fi
+      local session_file
+      session_file="$(latest_session_file)"
+      if [[ -z "$session_file" ]]; then
+        echo "no Codex session files found in $(codex_sessions_dir)" >&2
+        return 1
+      fi
+      local output_dir="${3:-$ROOT_DIR/runs/$(date +%Y%m%d-%H%M%S)}"
+      prepare_run "$(abspath "$session_file")" "$2" "$(abspath "$output_dir")"
+      ;;
+    pick)
+      if [[ $# -lt 2 || $# -gt 3 ]]; then
+        usage >&2
+        return 1
+      fi
+      local session_file
+      session_file="$(pick_session_file)"
+      if [[ -z "$session_file" ]]; then
+        echo "failed to pick a Codex session file from $(codex_sessions_dir)" >&2
+        return 1
+      fi
+      local output_dir="${3:-$ROOT_DIR/runs/$(date +%Y%m%d-%H%M%S)}"
+      prepare_run "$(abspath "$session_file")" "$2" "$(abspath "$output_dir")"
+      ;;
+    status)
+      if [[ $# -ne 2 ]]; then
+        usage >&2
+        return 1
+      fi
+      print_run_status "$(abspath "$2")"
+      ;;
+    *)
+      if [[ $# -lt 2 || $# -gt 3 ]]; then
+        usage >&2
+        return 1
+      fi
+      local output_dir="${3:-$ROOT_DIR/runs/$(date +%Y%m%d-%H%M%S)}"
+      prepare_run "$(abspath "$1")" "$2" "$(abspath "$output_dir")"
+      ;;
+  esac
 }
 
 main "$@"

@@ -90,7 +90,7 @@ You now have three ways to choose the parent session:
 
 - pass an explicit session jsonl path
 - use `latest` to fork the most recent local session file
-- use `pick` to choose from the 5 most recent local session files
+- use `pick` to choose from the 5 most recent local session files, shown as `session-id | cwd | timestamp`
 
 `latest` and `pick` resolve sessions from:
 

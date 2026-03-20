@@ -297,10 +297,18 @@ test_cli_pick_selects_requested_session_file() {
   init_git_repo
   write_session_history
 
-  printf '2\n' | CODEX_HOME="$TMP_DIR/codex-home" \
-    bash "$ROOT_DIR/bin/codex-fork" pick "拆出 review 子任务" "$TMP_DIR/run" >/dev/null
+  local pick_output
+  pick_output="$(
+    printf '2\n' | CODEX_HOME="$TMP_DIR/codex-home" \
+      bash "$ROOT_DIR/bin/codex-fork" pick "拆出 review 子任务" "$TMP_DIR/run" \
+      2>&1 >/dev/null
+  )"
 
   assert_file_contains "$TMP_DIR/run/status.json" '"session_id": "session-old"'
+  [[ "$pick_output" == *"session-new"* ]] || fail "pick should show session id summary"
+  [[ "$pick_output" == *"$TMP_DIR/repo"* ]] || fail "pick should show cwd summary"
+  [[ "$pick_output" == *"2026-03-20T10:00:00Z"* ]] || fail "pick should show session timestamp"
+  [[ "$pick_output" != *"rollout-2026-03-20T10-00-00-session-new.jsonl"* ]] || fail "pick should avoid showing raw session file path"
 }
 
 test_cli_status_reports_pending_run() {

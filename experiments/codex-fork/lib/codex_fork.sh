@@ -18,6 +18,29 @@ session_cwd_from_file() {
   ' "$session_file" | head -n 1
 }
 
+session_timestamp_from_file() {
+  local session_file="$1"
+  jq -r '
+    .timestamp // empty
+  ' "$session_file" | head -n 1
+}
+
+session_summary_line() {
+  local session_file="$1"
+  local session_id
+  local cwd
+  local timestamp
+
+  session_id="$(session_id_from_file "$session_file")"
+  cwd="$(session_cwd_from_file "$session_file")"
+  timestamp="$(session_timestamp_from_file "$session_file")"
+
+  printf '%s | %s | %s\n' \
+    "${session_id:-unknown-session}" \
+    "${cwd:-unknown-cwd}" \
+    "${timestamp:-unknown-time}"
+}
+
 codex_sessions_dir() {
   if [[ -n "${CODEX_FORK_SESSIONS_DIR:-}" ]]; then
     printf '%s\n' "$CODEX_FORK_SESSIONS_DIR"
@@ -70,7 +93,7 @@ pick_session_file() {
 
   echo "Pick a parent session:" >&2
   for index in "${!sessions[@]}"; do
-    printf '  %d. %s\n' "$((index + 1))" "${sessions[$index]}" >&2
+    printf '  %d. %s\n' "$((index + 1))" "$(session_summary_line "${sessions[$index]}")" >&2
   done
   printf 'Choice [1-%d]: ' "${#sessions[@]}" >&2
   read -r choice

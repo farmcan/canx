@@ -77,6 +77,16 @@ Reuse existing building blocks:
 
 Build only the thin supervisor layer that is missing for your workflow.
 
+## Thin Workflow
+
+`codex-fork/` is a first-class path in this repository for a much thinner delegation model:
+
+- reuse native `codex fork`
+- inherit a small amount of context from an existing session file
+- hand work off through `task-packet.md`, `status.json`, and `result.md`
+
+Use it when you want fast subtask delegation without pulling in the full CanX supervisor loop.
+
 ## Agent quickstart
 
 If you are a fresh agent session, read these files first:

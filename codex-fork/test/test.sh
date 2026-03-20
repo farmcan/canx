@@ -250,7 +250,7 @@ test_cli_uses_absolute_handoff_paths_in_launch_script() {
   init_git_repo
   write_repo_session
 
-  local rel_run="experiments/codex-fork/.tmp-test/run-rel"
+  local rel_run="codex-fork/.tmp-test/run-rel"
   bash "$ROOT_DIR/bin/codex-fork" \
     "$TMP_DIR/repo-session.jsonl" \
     "拆出 review 子任务" \

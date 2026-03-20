@@ -44,6 +44,17 @@ make build && make test
 go run ./cmd/canxd -goal "test mock run" -runner mock -repo . -max-turns 1
 ```
 
+### 跑一次薄工作流 `codex-fork`
+
+```bash
+bash codex-fork/test/test.sh
+```
+
+```bash
+bash codex-fork/bin/codex-fork latest \
+  "Inspect the current CanX review path and propose the smallest possible review loop."
+```
+
 ### 跑一次真实 Codex（只读，约 30s）
 
 ```bash
@@ -62,6 +73,7 @@ go run ./cmd/canxd \
 | `AGENTS.md` | 工程规则（必须遵守） |
 | `docs/ai-agent-context.md` | 项目全局：架构图、当前状态、下一步优先级 |
 | `docs/runbook.md` | 所有验证过的可运行命令 |
+| `codex-fork/README.md` | 薄工作流：原生 `codex fork` 的快速委派路径 |
 
 ### 可选（背景分析）
 

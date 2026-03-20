@@ -1,6 +1,6 @@
-# Codex Fork Experiment
+# Codex Fork
 
-This directory is an isolated experiment for a thinner multi-Codex workflow.
+`codex-fork/` is a first-class thin workflow inside this repository for fast multi-Codex delegation.
 
 The core idea is:
 - do not extend CanX main orchestration
@@ -10,7 +10,7 @@ The core idea is:
 
 ## Scope
 
-This experiment only does three things:
+This workflow intentionally does a small set of things:
 - parse a parent session jsonl file
 - write a task packet with a small inherited context snapshot
 - prepare an isolated child workspace
@@ -36,27 +36,27 @@ It does not do:
 ## Run
 
 ```bash
-bash experiments/codex-fork/test/test.sh
+bash codex-fork/test/test.sh
 ```
 
 ```bash
-bash experiments/codex-fork/bin/codex-fork \
+bash codex-fork/bin/codex-fork \
   ~/.codex/sessions/2026/03/13/rollout-xxxx.jsonl \
   "Inspect reviewer path and propose a smaller design"
 ```
 
 ```bash
-bash experiments/codex-fork/bin/codex-fork latest \
+bash codex-fork/bin/codex-fork latest \
   "Inspect reviewer path and propose a smaller design"
 ```
 
 ```bash
-bash experiments/codex-fork/bin/codex-fork pick \
+bash codex-fork/bin/codex-fork pick \
   "Inspect reviewer path and propose a smaller design"
 ```
 
 ```bash
-bash experiments/codex-fork/bin/codex-fork-ghostty \
+bash codex-fork/bin/codex-fork-ghostty \
   ~/.codex/sessions/2026/03/13/rollout-xxxx.jsonl \
   "Inspect reviewer path and propose a smaller design"
 ```
@@ -67,7 +67,7 @@ Set `CODEX_FORK_ENABLE_BYPASS=0` to turn off the default zero-interaction launch
 
 ## Default Launch Mode
 
-By default, this experiment generates `codex fork` launch commands with:
+By default, this workflow generates `codex fork` launch commands with:
 
 - `--dangerously-bypass-approvals-and-sandbox`
 - `-C <isolated-workspace>`
@@ -79,7 +79,7 @@ That means the generated child session will skip Codex confirmation prompts and 
 If you want the normal Codex confirmation flow instead, disable the bypass flag for a run:
 
 ```bash
-CODEX_FORK_ENABLE_BYPASS=0 bash experiments/codex-fork/bin/codex-fork \
+CODEX_FORK_ENABLE_BYPASS=0 bash codex-fork/bin/codex-fork \
   ~/.codex/sessions/2026/03/13/rollout-xxxx.jsonl \
   "Inspect reviewer path and propose a smaller design"
 ```
@@ -103,8 +103,8 @@ You now have three ways to choose the parent session:
 After preparing or launching a child run, inspect the handoff state with:
 
 ```bash
-bash experiments/codex-fork/bin/codex-fork status \
-  experiments/codex-fork/runs/20260320-120000
+bash codex-fork/bin/codex-fork status \
+  codex-fork/runs/20260320-120000
 ```
 
 The status command prints:

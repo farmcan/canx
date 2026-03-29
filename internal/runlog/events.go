@@ -159,6 +159,7 @@ func (s EventStore) LoadEvents(runID string) ([]Event, error) {
 
 	var events []Event
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		var event Event
 		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {

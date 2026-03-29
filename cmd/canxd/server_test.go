@@ -49,6 +49,41 @@ func TestServeExposesRunAPI(t *testing.T) {
 	}
 }
 
+func TestSelectPreferredFrontstageRunPrefersPlayableStoppedRun(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	store := runlog.NewEventStore(root)
+	running := runlog.RunRecord{ID: "run-running", Goal: "running", RepoRoot: root, Status: "running"}
+	stopped := runlog.RunRecord{ID: "run-stopped", Goal: "stopped", RepoRoot: root, Status: "stop"}
+	if err := store.SaveRun(running); err != nil {
+		t.Fatalf("SaveRun(running) error = %v", err)
+	}
+	if err := store.SaveRun(stopped); err != nil {
+		t.Fatalf("SaveRun(stopped) error = %v", err)
+	}
+	if err := store.AppendEvent("run-running", runlog.Event{Kind: "run_started"}); err != nil {
+		t.Fatalf("AppendEvent(running) error = %v", err)
+	}
+	if err := store.AppendEvent("run-stopped", runlog.Event{Kind: "run_started"}); err != nil {
+		t.Fatalf("AppendEvent(stopped start) error = %v", err)
+	}
+	if err := store.AppendEvent("run-stopped", runlog.Event{Kind: "turn_completed"}); err != nil {
+		t.Fatalf("AppendEvent(stopped turn) error = %v", err)
+	}
+	if err := store.AppendEvent("run-stopped", runlog.Event{Kind: "run_finished"}); err != nil {
+		t.Fatalf("AppendEvent(stopped finish) error = %v", err)
+	}
+
+	selected, err := selectPreferredFrontstageRun(store, []runlog.RunRecord{running, stopped})
+	if err != nil {
+		t.Fatalf("selectPreferredFrontstageRun() error = %v", err)
+	}
+	if selected.ID != "run-stopped" {
+		t.Fatalf("selected run = %q", selected.ID)
+	}
+}
+
 func TestServeExposesTaskSessionAndContextAPI(t *testing.T) {
 	t.Parallel()
 
@@ -172,6 +207,63 @@ func TestServeExposesTaskSessionAndContextAPI(t *testing.T) {
 	}
 	if docPayload["content"] != "doc one" {
 		t.Fatalf("doc content = %#v", docPayload["content"])
+	}
+
+	presentationReq := httptest.NewRequest("GET", "/api/runs/run-1/presentation", nil)
+	presentationResp := httptest.NewRecorder()
+	mux.ServeHTTP(presentationResp, presentationReq)
+	if presentationResp.Code != 200 {
+		t.Fatalf("presentation status = %d body=%s", presentationResp.Code, presentationResp.Body.String())
+	}
+	var presentation map[string]any
+	if err := json.Unmarshal(presentationResp.Body.Bytes(), &presentation); err != nil {
+		t.Fatalf("presentation decode error = %v", err)
+	}
+	if presentation["phase"] != "done" {
+		t.Fatalf("presentation phase = %#v", presentation["phase"])
+	}
+	if presentation["scene_zone"] != "sync_port" {
+		t.Fatalf("presentation scene_zone = %#v", presentation["scene_zone"])
+	}
+	if presentation["display_status"] == "" {
+		t.Fatal("expected display_status in presentation payload")
+	}
+
+	beatsReq := httptest.NewRequest("GET", "/api/runs/run-1/beats", nil)
+	beatsResp := httptest.NewRecorder()
+	mux.ServeHTTP(beatsResp, beatsReq)
+	if beatsResp.Code != 200 {
+		t.Fatalf("beats status = %d body=%s", beatsResp.Code, beatsResp.Body.String())
+	}
+	var beats []map[string]any
+	if err := json.Unmarshal(beatsResp.Body.Bytes(), &beats); err != nil {
+		t.Fatalf("beats decode error = %v", err)
+	}
+	if got, want := len(beats), 1; got != want {
+		t.Fatalf("beats len = %d, want %d", got, want)
+	}
+	if beats[0]["type"] != "complete" {
+		t.Fatalf("beat type = %#v", beats[0]["type"])
+	}
+
+	latestReq := httptest.NewRequest("GET", "/api/frontstage/latest", nil)
+	latestResp := httptest.NewRecorder()
+	mux.ServeHTTP(latestResp, latestReq)
+	if latestResp.Code != 200 {
+		t.Fatalf("frontstage latest status = %d body=%s", latestResp.Code, latestResp.Body.String())
+	}
+	var latest frontstagePayload
+	if err := json.Unmarshal(latestResp.Body.Bytes(), &latest); err != nil {
+		t.Fatalf("frontstage latest decode error = %v", err)
+	}
+	if latest.Run.ID != "run-1" {
+		t.Fatalf("frontstage latest run id = %q", latest.Run.ID)
+	}
+	if got, want := len(latest.Beats), 1; got != want {
+		t.Fatalf("frontstage latest beats len = %d, want %d", got, want)
+	}
+	if got, want := len(latest.Timeline), 1; got != want {
+		t.Fatalf("frontstage latest timeline len = %d, want %d", got, want)
 	}
 }
 

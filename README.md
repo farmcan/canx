@@ -142,6 +142,16 @@ The dashboard currently shows:
 - repo context (`README.md`, `AGENTS.md`, docs inventory)
 - room/message panel for human instructions
 
+The local UI now has two modes:
+
+- `Backstage`: the engineering console for runs, tasks, sessions, events, and rooms
+- `Frontstage`: a presentation-oriented scene view that maps the active run into a staged control-room layout
+
+Frontstage currently ships with CSS placeholders first, so it works before final art assets are ready. Asset naming guidance and prompt templates live in:
+
+- `cmd/canxd/ui/assets/README.md`
+- `docs/2026-03-29-frontstage-asset-prompts.md`
+
 ## Current MVP2 shape
 
 The current local MVP now includes:

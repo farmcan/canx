@@ -135,6 +135,7 @@ func (s Store) ListMessages(roomID string) ([]Message, error) {
 	defer file.Close()
 	var messages []Message
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		var message Message
 		if err := json.Unmarshal(scanner.Bytes(), &message); err != nil {

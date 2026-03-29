@@ -56,6 +56,7 @@ func (s EventStore) ListActions(runID string) ([]ActionRecord, error) {
 	defer file.Close()
 	var actions []ActionRecord
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		var action ActionRecord
 		if err := json.Unmarshal(scanner.Bytes(), &action); err != nil {

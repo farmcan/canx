@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {computeLiveRefreshPlan} from './live.js';
+import {computeLiveRefreshPlan, deriveFrontstagePresentation} from './live.js';
 
 test('computeLiveRefreshPlan refreshes matching session and task', () => {
   const plan = computeLiveRefreshPlan({
@@ -50,4 +50,34 @@ test('computeLiveRefreshPlan handles empty task lists', () => {
   assert.equal(plan.nextTaskID, null);
   assert.equal(plan.refreshTaskDetail, false);
   assert.equal(plan.refreshSession, true);
+});
+
+test('deriveFrontstagePresentation maps blocked task to incident zone', () => {
+  const presentation = deriveFrontstagePresentation({
+    goal: 'ship ui',
+    status: 'running',
+    reason: '',
+    tasks: [
+      {id: 'task-1', title: 'Fix failing test', status: 'blocked'},
+    ],
+  });
+
+  assert.equal(presentation.phase, 'blocked');
+  assert.equal(presentation.sceneZone, 'incident_zone');
+  assert.match(presentation.displayStatus, /blocked/i);
+});
+
+test('deriveFrontstagePresentation maps completed run to sync port', () => {
+  const presentation = deriveFrontstagePresentation({
+    goal: 'ship ui',
+    status: 'stop',
+    reason: 'all tasks complete',
+    tasks: [
+      {id: 'task-1', title: 'Ship UI', status: 'done'},
+    ],
+  });
+
+  assert.equal(presentation.phase, 'done');
+  assert.equal(presentation.sceneZone, 'sync_port');
+  assert.match(presentation.displayStatus, /complete|done/i);
 });

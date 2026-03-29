@@ -1,0 +1,27 @@
+{
+  "scene_background": "assets/frontstage-scene-bg.webp",
+  "zones": {
+    "command_deck": "assets/zone-command.webp",
+    "workbench": "assets/zone-workbench.webp",
+    "test_lab": "assets/zone-test-lab.webp",
+    "review_gate": "assets/zone-review-gate.webp",
+    "sync_port": "assets/zone-sync-port.webp",
+    "incident_zone": "assets/zone-incident.webp"
+  },
+  "avatars": {
+    "idle": "assets/avatar-idle.webp",
+    "planning": "assets/avatar-planning.webp",
+    "working": "assets/avatar-working.webp",
+    "validating": "assets/avatar-validating.webp",
+    "reviewing": "assets/avatar-reviewing.webp",
+    "syncing": "assets/avatar-syncing.webp",
+    "blocked": "assets/avatar-blocked.webp"
+  },
+  "effects": {
+    "progress": "assets/fx-progress.webp",
+    "warning": "assets/fx-warning.webp",
+    "review_pass": "assets/fx-review-pass.webp",
+    "review_reject": "assets/fx-review-reject.webp",
+    "sync": "assets/fx-sync.webp"
+  }
+}

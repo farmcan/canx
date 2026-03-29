@@ -165,6 +165,16 @@ go run ./cmd/canxd serve -repo .
 - runtime 元数据（在 turn event 里）
 - room/message 面板，可手工追加人类指令
 
+当前 UI 也支持两种模式切换：
+
+- `Frontstage`：面向展示的场景化状态视图
+- `Backstage`：面向工程调试的详细控制台
+
+如果要准备前台素材，参考：
+
+- `cmd/canxd/ui/assets/README.md`
+- `docs/2026-03-29-frontstage-asset-prompts.md`
+
 ### 验证 SSE 实时事件流
 
 先生成一个 run：

@@ -1,10 +1,12 @@
-import {computeLiveRefreshPlan} from './live.js';
+import {computeLiveRefreshPlan, deriveFrontstagePresentation} from './live.js';
 
 let currentRun = null;
 let currentContext = null;
 let currentRoom = null;
 let currentTask = null;
 let currentEventSource = null;
+let currentMode = 'backstage';
+let currentPresentation = null;
 
 async function fetchJSON(path) {
   const response = await fetch(path);
@@ -57,9 +59,11 @@ async function loadRun(runID) {
     fetchJSON('/api/sessions'),
     fetchJSON('/api/rooms')
   ]);
+  const presentation = await fetchJSON(`/api/runs/${runID}/presentation`).catch(() => deriveFrontstagePresentation(run));
 
   currentRun = run;
   currentContext = context;
+  currentPresentation = normalizePresentation(presentation, run);
 
   setText('run-summary', `${run.goal}\n${run.reason || ''}`);
   setText('session-summary', run.session_id || '—');
@@ -72,6 +76,7 @@ async function loadRun(runID) {
   await renderSession(run.session_id);
   renderContext(context);
   renderRooms(rooms, run.id);
+  renderFrontstage(run, currentPresentation);
   startEventStream(run.id);
 }
 
@@ -240,6 +245,50 @@ async function loadRoom(roomID) {
   document.getElementById('room-messages').textContent = JSON.stringify(messages, null, 2);
 }
 
+function normalizePresentation(presentation, run) {
+  if (!presentation) {
+    return deriveFrontstagePresentation(run);
+  }
+  return {
+    phase: presentation.phase || presentation.Phase || 'planning',
+    sceneZone: presentation.scene_zone || presentation.SceneZone || 'command_deck',
+    displayStatus: presentation.display_status || presentation.DisplayStatus || '',
+    actorRole: presentation.actor_role || presentation.ActorRole || 'supervisor',
+  };
+}
+
+function renderFrontstage(run, presentation) {
+  const taskTitle = (run.tasks || []).find((task) => (task.status || task.Status) === 'in_progress' || (task.status || task.Status) === 'blocked')?.title
+    || (run.tasks || []).find((task) => (task.status || task.Status) === 'in_progress' || (task.status || task.Status) === 'blocked')?.Title
+    || (run.tasks || [])[0]?.title
+    || (run.tasks || [])[0]?.Title
+    || 'No active task';
+  setText('frontstage-run', run.goal || 'Select a run');
+  setText('frontstage-phase', presentation.phase || '—');
+  setText('frontstage-task', taskTitle);
+  setText('frontstage-status', presentation.displayStatus || 'Select a run.');
+  setText('frontstage-strip', `status=${run.status || 'unknown'} · phase=${presentation.phase || 'planning'} · session=${run.session_id || '—'}`);
+
+  document.querySelectorAll('.scene-zone').forEach((zone) => {
+    zone.classList.toggle('active', zone.dataset.zone === presentation.sceneZone);
+  });
+
+  const avatar = document.getElementById('scene-avatar');
+  avatar.className = `scene-avatar phase-${presentation.phase || 'planning'}`;
+  const positions = {
+    command_deck: {top: '86px', left: '120px'},
+    workbench: {top: '118px', left: '70%'},
+    test_lab: {top: '300px', left: '112px'},
+    review_gate: {top: '304px', left: '47%'},
+    sync_port: {top: '390px', left: '74%'},
+    incident_zone: {top: '402px', left: '132px'},
+  };
+  const position = positions[presentation.sceneZone] || positions.command_deck;
+  avatar.style.top = position.top;
+  avatar.style.left = position.left;
+  setText('avatar-bubble', presentation.displayStatus || 'Waiting for run data.');
+}
+
 function renderDocsTree(docs, container) {
   container.innerHTML = '';
   const tree = {};
@@ -299,7 +348,9 @@ function startEventStream(runID) {
       fetchJSON(`/api/runs/${runID}/actions`),
       fetchJSON('/api/sessions')
     ]);
+    const presentation = await fetchJSON(`/api/runs/${runID}/presentation`).catch(() => deriveFrontstagePresentation(run));
     currentRun = run;
+    currentPresentation = normalizePresentation(presentation, run);
     setText('run-summary', `${run.goal}\n${run.reason || ''}`);
     setText('session-summary', run.session_id || '—');
     setText('task-summary', `${run.task_count} tasks`);
@@ -317,6 +368,7 @@ function startEventStream(runID) {
     if (plan.refreshSession) {
       await renderSession(run.session_id);
     }
+    renderFrontstage(run, currentPresentation);
     document.getElementById('events').textContent = JSON.stringify(events, null, 2);
     document.getElementById('actions').textContent = JSON.stringify(actions, null, 2);
   };
@@ -356,6 +408,17 @@ document.getElementById('room-form').onsubmit = async (event) => {
   input.value = '';
   await loadRoom(currentRoom);
 };
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('frontstage').classList.toggle('hidden', mode !== 'frontstage');
+  document.getElementById('backstage').classList.toggle('hidden', mode !== 'backstage');
+  document.getElementById('mode-frontstage').classList.toggle('active', mode === 'frontstage');
+  document.getElementById('mode-backstage').classList.toggle('active', mode === 'backstage');
+}
+
+document.getElementById('mode-frontstage').onclick = () => setMode('frontstage');
+document.getElementById('mode-backstage').onclick = () => setMode('backstage');
 
 loadRuns().catch((error) => {
   setText('events', String(error));

@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CanX AI Persona Sample</title>
+  <style>
+    :root {
+      --bg-0: #07111e;
+      --bg-1: #0d1726;
+      --panel: rgba(7, 15, 27, 0.82);
+      --line: rgba(122, 162, 201, 0.22);
+      --text: #e7edf6;
+      --muted: #9fb1c7;
+      --blue: #57a8ff;
+      --teal: #3dd8c1;
+      --amber: #ffb84f;
+      --red: #ff6c62;
+      --green: #56dc8a;
+      --actor-x: 16%;
+      --actor-y: 22%;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: "Courier New", "Monaco", monospace;
+      background:
+        radial-gradient(circle at top, rgba(44, 88, 153, 0.18), transparent 36%),
+        linear-gradient(180deg, #030711 0%, var(--bg-0) 45%, #09101c 100%);
+    }
+    .sample-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 18px;
+      padding: 18px;
+    }
+    .sample-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(18px);
+    }
+    .sample-main {
+      padding: 18px;
+    }
+    .sample-topline {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .sample-eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      font-size: 34px;
+      line-height: 1.05;
+      margin-top: 6px;
+    }
+    .sample-subtitle {
+      margin-top: 8px;
+      color: var(--muted);
+      max-width: 760px;
+      line-height: 1.5;
+    }
+    .sample-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .sample-link, .sample-btn {
+      border: 1px solid rgba(128, 157, 186, 0.24);
+      border-radius: 4px;
+      padding: 10px 14px;
+      background: rgba(11, 17, 30, 0.78);
+      color: var(--text);
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 180ms ease, border-color 180ms ease;
+    }
+    .sample-link:hover, .sample-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(87, 168, 255, 0.55);
+    }
+    .sample-btn.primary {
+      background: linear-gradient(135deg, rgba(46, 117, 245, 0.9), rgba(25, 88, 185, 0.92));
+      border-color: rgba(96, 165, 250, 0.75);
+    }
+    .sample-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .sample-card {
+      padding: 14px;
+      border-radius: 4px;
+      background: rgba(9, 16, 29, 0.76);
+      border: 1px solid rgba(108, 139, 170, 0.16);
+    }
+    .sample-card-label {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .sample-card-value {
+      margin-top: 10px;
+      font-size: 19px;
+      line-height: 1.35;
+    }
+    .sample-stage {
+      position: relative;
+      min-height: 680px;
+      overflow: hidden;
+      border-radius: 6px;
+      border: 1px solid rgba(101, 136, 170, 0.18);
+      background:
+        radial-gradient(circle at 18% 24%, rgba(87, 168, 255, 0.13), transparent 18%),
+        radial-gradient(circle at 62% 28%, rgba(61, 216, 193, 0.12), transparent 18%),
+        radial-gradient(circle at 22% 68%, rgba(255, 184, 79, 0.12), transparent 16%),
+        radial-gradient(circle at 50% 72%, rgba(255, 108, 98, 0.12), transparent 18%),
+        radial-gradient(circle at 80% 64%, rgba(86, 220, 138, 0.14), transparent 16%),
+        linear-gradient(180deg, rgba(9, 16, 28, 0.98), rgba(8, 14, 24, 0.92));
+    }
+    .sample-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 24px 24px;
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    .sample-zone {
+      position: absolute;
+      width: 220px;
+      min-height: 124px;
+      padding: 14px;
+      border-radius: 4px;
+      border: 1px solid rgba(128, 157, 186, 0.22);
+      background: rgba(10, 17, 29, 0.72);
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,0.02);
+      transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease, opacity 220ms ease;
+    }
+    .sample-zone::after {
+      content: "";
+      position: absolute;
+      inset: auto 18px -18px 18px;
+      height: 26px;
+      border-radius: 0;
+      background: rgba(3, 7, 16, 0.44);
+      filter: blur(10px);
+    }
+    .sample-zone h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+    .sample-zone p {
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 14px;
+    }
+    .sample-zone[data-zone="command"] { left: 6%; top: 8%; }
+    .sample-zone[data-zone="forge"] { left: 45%; top: 10%; }
+    .sample-zone[data-zone="lab"] { left: 12%; top: 54%; }
+    .sample-zone[data-zone="incident"] { left: 40%; top: 58%; }
+    .sample-zone[data-zone="sync"] { left: 70%; top: 52%; width: 180px; }
+    .sample-stage[data-zone="command"] .sample-zone[data-zone="command"],
+    .sample-stage[data-zone="forge"] .sample-zone[data-zone="forge"],
+    .sample-stage[data-zone="lab"] .sample-zone[data-zone="lab"],
+    .sample-stage[data-zone="incident"] .sample-zone[data-zone="incident"],
+    .sample-stage[data-zone="sync"] .sample-zone[data-zone="sync"] {
+      transform: translateY(-4px) scale(1.02);
+      border-color: rgba(87, 168, 255, 0.72);
+      box-shadow: 0 0 0 1px rgba(87, 168, 255, 0.22), 0 16px 34px rgba(2, 8, 20, 0.4);
+    }
+    .sample-beam {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at var(--actor-x) var(--actor-y), rgba(96, 165, 250, 0.18), transparent 16%);
+      transition: background-position 320ms ease;
+    }
+    .sample-stage-agents {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .sample-stage-agent {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      display: grid;
+      justify-items: center;
+      gap: 6px;
+      opacity: 0.8;
+      transition: transform 180ms ease, opacity 180ms ease;
+    }
+    .sample-stage-agent.active {
+      opacity: 1;
+      transform: translate(-50%, -54%);
+    }
+    .sample-stage-agent-sprite {
+      position: relative;
+      width: 38px;
+      height: 52px;
+      image-rendering: pixelated;
+    }
+    .sample-stage-agent-head {
+      position: absolute;
+      left: 9px;
+      top: 0;
+      width: 20px;
+      height: 18px;
+      background: #bfd9ff;
+      border: 2px solid #264872;
+    }
+    .sample-stage-agent-body {
+      position: absolute;
+      left: 5px;
+      top: 18px;
+      width: 28px;
+      height: 28px;
+      background: #1d4ed8;
+      border: 2px solid #10243d;
+    }
+    .sample-stage-agent-sprite[data-role="worker"] .sample-stage-agent-body { background: #14b8a6; }
+    .sample-stage-agent-sprite[data-role="reviewer"] .sample-stage-agent-body { background: #f59e0b; }
+    .sample-stage-agent-sprite[data-role="operator"] .sample-stage-agent-body { background: #22c55e; }
+    .sample-stage-agent-label {
+      padding: 2px 6px;
+      border: 1px solid rgba(104, 132, 162, 0.2);
+      background: rgba(6, 11, 18, 0.82);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .sample-actor {
+      position: absolute;
+      left: var(--actor-x);
+      top: var(--actor-y);
+      width: 128px;
+      height: 176px;
+      transform: translate(-50%, -50%);
+      transition: left 750ms cubic-bezier(0.25, 0.9, 0.3, 1), top 750ms cubic-bezier(0.25, 0.9, 0.3, 1);
+      pointer-events: none;
+      z-index: 3;
+    }
+    .sample-actor-shadow {
+      position: absolute;
+      left: 26px;
+      right: 26px;
+      bottom: 8px;
+      height: 26px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.42);
+      filter: none;
+      animation: actor-shadow 900ms steps(2) infinite;
+    }
+    .sample-actor-body {
+      position: absolute;
+      inset: 28px 20px 18px 20px;
+      image-rendering: pixelated;
+      animation: actor-bob 700ms steps(2) infinite;
+    }
+    .sample-head {
+      position: absolute;
+      top: 0;
+      left: 34px;
+      width: 44px;
+      height: 44px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #c8deff, #7ab3ff);
+      box-shadow: 0 0 0 4px rgba(61, 216, 193, 0.08);
+    }
+    .sample-visor {
+      position: absolute;
+      inset: 12px 8px 10px 8px;
+      border-radius: 1px;
+      background: linear-gradient(135deg, rgba(10, 25, 50, 0.92), rgba(41, 121, 255, 0.72));
+    }
+    .sample-torso {
+      position: absolute;
+      top: 42px;
+      left: 20px;
+      width: 72px;
+      height: 68px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #1d4f87, #102a4b);
+      border: 1px solid rgba(142, 194, 255, 0.18);
+    }
+    .sample-core {
+      position: absolute;
+      top: 18px;
+      left: 23px;
+      width: 26px;
+      height: 26px;
+      border-radius: 1px;
+      background: radial-gradient(circle, rgba(61, 216, 193, 0.95), rgba(61, 216, 193, 0.18));
+      animation: core-pulse 1200ms ease-in-out infinite;
+    }
+    .sample-arm {
+      position: absolute;
+      top: 58px;
+      width: 16px;
+      height: 58px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #15375f, #0b2037);
+      transform-origin: top center;
+    }
+    .sample-arm.left { left: 6px; animation: arm-left 900ms ease-in-out infinite; }
+    .sample-arm.right { right: 6px; animation: arm-right 900ms ease-in-out infinite; }
+    .sample-tool {
+      position: absolute;
+      right: -2px;
+      top: 72px;
+      width: 30px;
+      height: 16px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--amber), #ffd58a);
+      box-shadow: 0 0 18px rgba(255, 184, 79, 0.28);
+      animation: tool-flash 1000ms ease-in-out infinite;
+    }
+    .sample-leg {
+      position: absolute;
+      top: 100px;
+      width: 18px;
+      height: 52px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #13345a, #0b1d34);
+      transform-origin: top center;
+    }
+    .sample-leg.left { left: 26px; animation: leg-left 1100ms ease-in-out infinite; }
+    .sample-leg.right { right: 26px; animation: leg-right 1100ms ease-in-out infinite; }
+    .sample-bubble {
+      position: absolute;
+      top: -6px;
+      left: 94px;
+      min-width: 220px;
+      max-width: 280px;
+      padding: 12px 14px;
+      border-radius: 4px;
+      background: rgba(6, 11, 18, 0.92);
+      border: 1px solid rgba(104, 150, 201, 0.22);
+      color: var(--text);
+      line-height: 1.45;
+      box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.26);
+    }
+    .sample-bubble::before {
+      content: "";
+      position: absolute;
+      left: -10px;
+      bottom: 16px;
+      width: 18px;
+      height: 18px;
+      background: rgba(6, 11, 18, 0.92);
+      border-left: 1px solid rgba(104, 150, 201, 0.22);
+      border-bottom: 1px solid rgba(104, 150, 201, 0.22);
+      transform: rotate(45deg);
+    }
+    .sample-signal {
+      position: absolute;
+      right: 36px;
+      top: 36px;
+      width: 16px;
+      height: 16px;
+      border-radius: 2px;
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(86, 220, 138, 0.46);
+      transition: background 200ms ease, box-shadow 200ms ease;
+      z-index: 2;
+    }
+    .sample-stage[data-zone="incident"] .sample-signal {
+      background: var(--red);
+      box-shadow: 0 0 18px rgba(255, 108, 98, 0.56);
+      animation: alert-blink 500ms linear infinite;
+    }
+    .sample-stage[data-zone="forge"] .sample-tool,
+    .sample-stage[data-zone="lab"] .sample-tool {
+      background: linear-gradient(90deg, var(--teal), #98f8ea);
+      box-shadow: 0 0 20px rgba(61, 216, 193, 0.34);
+    }
+    .sample-stage[data-zone="sync"] .sample-core {
+      background: radial-gradient(circle, rgba(86, 220, 138, 0.96), rgba(86, 220, 138, 0.2));
+    }
+    .sample-controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .sample-side {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .sample-side-card {
+      padding: 16px;
+      border-radius: 4px;
+      background: rgba(10, 17, 30, 0.76);
+      border: 1px solid rgba(108, 139, 170, 0.16);
+    }
+    .sample-side-card p {
+      color: var(--muted);
+      line-height: 1.55;
+      margin-top: 8px;
+    }
+    .sample-cast {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .sample-cast-card {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid rgba(104, 132, 162, 0.18);
+      border-radius: 4px;
+      background: rgba(8, 13, 24, 0.78);
+    }
+    .sample-cast-card.active {
+      border-color: rgba(87, 168, 255, 0.76);
+      box-shadow: inset 0 0 0 1px rgba(87, 168, 255, 0.22);
+      background: rgba(12, 23, 41, 0.92);
+    }
+    .sample-cast-sprite {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border: 2px solid rgba(147, 197, 253, 0.5);
+      background: linear-gradient(180deg, #1d4ed8, #102a4b);
+      color: #eff6ff;
+      font-weight: 700;
+    }
+    .sample-cast-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .sample-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .sample-timeline-item {
+      width: 100%;
+      text-align: left;
+      background: rgba(8, 13, 24, 0.78);
+      border: 1px solid rgba(104, 132, 162, 0.18);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 12px;
+      display: grid;
+      gap: 6px;
+      cursor: pointer;
+      transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+    }
+    .sample-timeline-item:hover {
+      transform: translateY(-1px);
+      border-color: rgba(87, 168, 255, 0.44);
+    }
+    .sample-timeline-item.active {
+      border-color: rgba(87, 168, 255, 0.76);
+      background: rgba(12, 23, 41, 0.92);
+      box-shadow: inset 0 0 0 1px rgba(87, 168, 255, 0.22);
+    }
+    .sample-timeline-progress {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .sample-status {
+      margin-top: 14px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    @keyframes actor-bob {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-4px); }
+    }
+    @keyframes actor-shadow {
+      0%, 100% { transform: scale(1); opacity: 0.4; }
+      50% { transform: scale(0.94); opacity: 0.3; }
+    }
+    @keyframes arm-left {
+      0%, 100% { transform: rotate(16deg); }
+      50% { transform: rotate(-14deg); }
+    }
+    @keyframes arm-right {
+      0%, 100% { transform: rotate(-12deg); }
+      50% { transform: rotate(20deg); }
+    }
+    @keyframes leg-left {
+      0%, 100% { transform: rotate(8deg); }
+      50% { transform: rotate(-6deg); }
+    }
+    @keyframes leg-right {
+      0%, 100% { transform: rotate(-8deg); }
+      50% { transform: rotate(6deg); }
+    }
+    @keyframes core-pulse {
+      0%, 100% { transform: scale(1); opacity: 0.95; }
+      50% { transform: scale(1.18); opacity: 0.7; }
+    }
+    @keyframes tool-flash {
+      0%, 100% { opacity: 0.92; transform: scaleX(1); }
+      50% { opacity: 1; transform: scaleX(1.12); }
+    }
+    @keyframes alert-blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0.28; }
+    }
+    @media (max-width: 1180px) {
+      .sample-shell {
+        grid-template-columns: 1fr;
+      }
+      .sample-summary {
+        grid-template-columns: 1fr;
+      }
+      .sample-stage {
+        min-height: 760px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="sample-shell">
+    <section class="sample-panel sample-main">
+      <div class="sample-topline">
+        <div>
+          <div class="sample-eyebrow">AI Persona Frontstage</div>
+          <h1>CanX Command Forge Sample</h1>
+          <p class="sample-subtitle">这个样片页不是在展示抽象状态，而是在展示一个被拟人化的 AI 角色如何接目标、调工具、做检查、处理异常、再完成交接。</p>
+        </div>
+        <div class="sample-links">
+          <a class="sample-link" href="/frontstage.html">Open Live Frontstage</a>
+          <a class="sample-link" href="/">Open Backstage</a>
+        </div>
+      </div>
+
+      <section class="sample-summary">
+        <div class="sample-card">
+          <div class="sample-card-label">Actor</div>
+          <div id="actor-role" class="sample-card-value">AI 指挥员</div>
+        </div>
+        <div class="sample-card">
+          <div class="sample-card-label">Beat</div>
+          <div id="sample-beat-label" class="sample-card-value">Mission Briefing</div>
+        </div>
+        <div class="sample-card">
+          <div class="sample-card-label">Progress</div>
+          <div id="sample-beat-progress" class="sample-card-value">1 / 5</div>
+        </div>
+      </section>
+
+      <section id="sample-stage" class="sample-stage" data-zone="command">
+        <div class="sample-grid"></div>
+        <div class="sample-beam"></div>
+        <div class="sample-signal"></div>
+        <div id="sample-stage-agents" class="sample-stage-agents"></div>
+
+        <article class="sample-zone" data-zone="command">
+          <h3>Command Deck</h3>
+          <p>接收目标、拆解任务、准备派发当前工作。</p>
+        </article>
+        <article class="sample-zone" data-zone="forge">
+          <h3>Tool Forge</h3>
+          <p>发起 Tool Use，调优工具，进入真实工作状态。</p>
+        </article>
+        <article class="sample-zone" data-zone="lab">
+          <h3>Validation Lab</h3>
+          <p>读取指标、检查输出、确认当前结果是否可继续。</p>
+        </article>
+        <article class="sample-zone" data-zone="incident">
+          <h3>Incident Bay</h3>
+          <p>故障、回退、阻塞、需要接管的异常都在这里表达。</p>
+        </article>
+        <article class="sample-zone" data-zone="sync">
+          <h3>Sync Port</h3>
+          <p>完成归档、交接结果、准备进入下一位参与者。</p>
+        </article>
+
+        <div id="sample-actor" class="sample-actor" data-zone="command" data-mood="focus">
+          <div class="sample-actor-shadow"></div>
+          <div class="sample-actor-body">
+            <div class="sample-head">
+              <div class="sample-visor"></div>
+            </div>
+            <div class="sample-arm left"></div>
+            <div class="sample-arm right"></div>
+            <div class="sample-torso">
+              <div class="sample-core"></div>
+            </div>
+            <div class="sample-tool"></div>
+            <div class="sample-leg left"></div>
+            <div class="sample-leg right"></div>
+          </div>
+          <div class="sample-bubble">
+            <strong id="sample-beat-speech">目标收到，开始拆解。</strong>
+          </div>
+        </div>
+      </section>
+
+      <div class="sample-controls">
+        <button id="sample-start" class="sample-btn primary" type="button">Start Auto Demo</button>
+        <button id="sample-next" class="sample-btn" type="button">Next Beat</button>
+        <button id="sample-replay" class="sample-btn" type="button">Replay</button>
+      </div>
+      <p id="sample-status-line" class="sample-status">AI 指挥员正在 Mission Briefing。</p>
+    </section>
+
+    <aside class="sample-panel sample-side">
+      <section class="sample-side-card">
+        <div class="sample-eyebrow">Design Intent</div>
+        <h2>AI 拟人化不是装饰</h2>
+        <p>这个样片刻意把每一轮系统行为转成“角色在做什么”。后面不管是一次 LLM call、一次 Tool Use，还是一轮 turn，都可以投射成一个可感知的 beat。</p>
+      </section>
+
+      <section class="sample-side-card">
+        <div class="sample-eyebrow">Current Beat</div>
+        <h2 id="sample-beat-summary">接收目标，拆分当前任务，准备把工作包送入工坊。</h2>
+      </section>
+
+      <section class="sample-side-card">
+        <div class="sample-eyebrow">Beat Timeline</div>
+        <div id="sample-timeline" class="sample-timeline"></div>
+      </section>
+      <section class="sample-side-card">
+        <div class="sample-eyebrow">Agent Cast</div>
+        <h2>协同角色</h2>
+        <div id="sample-cast" class="sample-cast"></div>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module" src="/frontstage-sample-app.js"></script>
+</body>
+</html>

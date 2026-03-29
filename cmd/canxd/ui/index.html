@@ -12,7 +12,15 @@
       <h1>CanX Control Plane</h1>
       <p>Runs, tasks, sessions, context, and event detail.</p>
     </div>
-    <button id="refresh">Refresh</button>
+    <div class="topbar-actions">
+      <div class="mode-toggle">
+        <button id="mode-frontstage" class="mode-button">Frontstage</button>
+        <button id="mode-backstage" class="mode-button active">Backstage</button>
+        <a id="open-frontstage-demo" class="mode-button mode-link" href="/frontstage.html">Frontstage Demo</a>
+        <a id="open-frontstage-sample" class="mode-button mode-link" href="/frontstage-sample.html">Persona Sample</a>
+      </div>
+      <button id="refresh">Refresh</button>
+    </div>
   </header>
 
   <main class="shell">
@@ -22,6 +30,58 @@
     </aside>
 
     <section class="content">
+      <section id="frontstage" class="frontstage hidden">
+        <section class="panel frontstage-summary">
+          <div class="summary-card">
+            <div class="label">Current Run</div>
+            <div id="frontstage-run" class="value">Select a run</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Phase</div>
+            <div id="frontstage-phase" class="value">—</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Active Task</div>
+            <div id="frontstage-task" class="value">—</div>
+          </div>
+        </section>
+
+        <section class="panel frontstage-scene">
+          <div class="scene-header">
+            <div>
+              <h2>Frontstage</h2>
+              <p id="frontstage-status" class="scene-subtitle">Select a run.</p>
+            </div>
+          </div>
+          <div id="scene-board" class="scene-board">
+            <div class="scene-zone" data-zone="command_deck">
+              <span class="zone-label">Command Deck</span>
+            </div>
+            <div class="scene-zone" data-zone="workbench">
+              <span class="zone-label">Workbench</span>
+            </div>
+            <div class="scene-zone" data-zone="test_lab">
+              <span class="zone-label">Test Lab</span>
+            </div>
+            <div class="scene-zone" data-zone="review_gate">
+              <span class="zone-label">Review Gate</span>
+            </div>
+            <div class="scene-zone" data-zone="sync_port">
+              <span class="zone-label">Sync Port</span>
+            </div>
+            <div class="scene-zone" data-zone="incident_zone">
+              <span class="zone-label">Incident Zone</span>
+            </div>
+            <div id="scene-avatar" class="scene-avatar">
+              <div class="avatar-glyph">AI</div>
+              <div id="avatar-bubble" class="avatar-bubble">Waiting for run data.</div>
+            </div>
+          </div>
+          <div id="frontstage-strip" class="frontstage-strip">No active run.</div>
+        </section>
+      </section>
+
+      <section id="backstage" class="backstage">
       <section class="panel summary-grid">
         <div class="summary-card">
           <div class="label">Run</div>
@@ -86,6 +146,7 @@
           </form>
           <pre id="room-messages">Select a room.</pre>
         </section>
+      </section>
       </section>
     </section>
   </main>

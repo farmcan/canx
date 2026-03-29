@@ -18,6 +18,32 @@ import (
 	"github.com/farmcan/canx/internal/workspace"
 )
 
+type runPresentation struct {
+	Phase         string `json:"phase"`
+	SceneZone     string `json:"scene_zone"`
+	DisplayStatus string `json:"display_status"`
+	ActorRole     string `json:"actor_role"`
+}
+
+type runBeat struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Summary   string `json:"summary"`
+	Zone      string `json:"zone"`
+	ActorRole string `json:"actor_role"`
+	CreatedAt string `json:"created_at,omitempty"`
+}
+
+type frontstagePayload struct {
+	Run          runlog.RunRecord      `json:"run"`
+	Presentation runPresentation       `json:"presentation"`
+	Beats        []runBeat             `json:"beats"`
+	Timeline     []runBeat             `json:"timeline"`
+	Actions      []runlog.ActionRecord `json:"actions"`
+	Messages     []rooms.Message       `json:"messages"`
+}
+
 //go:embed ui/*
 var uiFiles embed.FS
 
@@ -57,6 +83,28 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 		}
 		writeJSON(w, runs)
 	})
+	mux.HandleFunc("/api/frontstage/latest", func(w http.ResponseWriter, r *http.Request) {
+		runs, err := store.ListRuns()
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if len(runs) == 0 {
+			writeJSON(w, frontstagePayload{})
+			return
+		}
+		selected, err := selectPreferredFrontstageRun(store, runs)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		payload, err := buildFrontstagePayload(store, roomStore, selected)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, payload)
+	})
 	mux.HandleFunc("/api/runs/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/runs/")
 		parts := strings.Split(strings.Trim(path, "/"), "/")
@@ -73,6 +121,25 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 				return
 			}
 			writeJSON(w, record)
+		case len(parts) == 2 && parts[1] == "presentation":
+			record, err := store.LoadRun(runID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, deriveRunPresentation(record))
+		case len(parts) == 2 && parts[1] == "beats":
+			record, err := store.LoadRun(runID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			events, err := store.LoadEvents(runID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			writeJSON(w, deriveRunBeats(record, events))
 		case len(parts) == 3 && parts[1] == "tasks":
 			record, err := store.LoadRun(runID)
 			if err != nil {
@@ -240,6 +307,69 @@ func newServerMux(store runlog.EventStore) (*http.ServeMux, error) {
 	return mux, nil
 }
 
+func selectPreferredFrontstageRun(store runlog.EventStore, runs []runlog.RunRecord) (runlog.RunRecord, error) {
+	if len(runs) == 0 {
+		return runlog.RunRecord{}, nil
+	}
+	selected := runs[0]
+	bestScore := -1
+	for _, run := range runs {
+		score := 0
+		events, err := store.LoadEvents(run.ID)
+		if err != nil {
+			return runlog.RunRecord{}, err
+		}
+		score += len(events)
+		if run.Status == "stop" {
+			score += 10
+		}
+		if run.Status == "running" {
+			score -= 2
+		}
+		if score > bestScore {
+			selected = run
+			bestScore = score
+		}
+	}
+	return selected, nil
+}
+
+func buildFrontstagePayload(store runlog.EventStore, roomStore rooms.Store, record runlog.RunRecord) (frontstagePayload, error) {
+	events, err := store.LoadEvents(record.ID)
+	if err != nil {
+		return frontstagePayload{}, err
+	}
+	actions, err := store.ListActions(record.ID)
+	if err != nil {
+		return frontstagePayload{}, err
+	}
+	roomItems, err := roomStore.ListRooms()
+	if err != nil {
+		return frontstagePayload{}, err
+	}
+	var latestMessages []rooms.Message
+	for _, room := range roomItems {
+		if room.RunID != record.ID {
+			continue
+		}
+		messages, err := roomStore.ListMessages(room.ID)
+		if err != nil {
+			return frontstagePayload{}, err
+		}
+		if len(messages) > len(latestMessages) {
+			latestMessages = messages
+		}
+	}
+	return frontstagePayload{
+		Run:          record,
+		Presentation: deriveRunPresentation(record),
+		Beats:        deriveRunBeats(record, events),
+		Timeline:     deriveFrontstageTimeline(record, events, actions, latestMessages),
+		Actions:      actions,
+		Messages:     latestMessages,
+	}, nil
+}
+
 func listSessionReports(root string) ([]runlog.SessionReport, error) {
 	dir := filepath.Join(root, ".canx", "sessions")
 	entries, err := os.ReadDir(dir)
@@ -304,6 +434,196 @@ func writeJSON(w http.ResponseWriter, value any) {
 func writeError(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusInternalServerError)
 	writeJSON(w, map[string]string{"error": err.Error()})
+}
+
+func deriveRunPresentation(record runlog.RunRecord) runPresentation {
+	phase := "planning"
+	sceneZone := "command_deck"
+	displayStatus := strings.TrimSpace(record.Goal)
+	actorRole := "supervisor"
+
+	var activeTask *tasks.Task
+	for index := range record.Tasks {
+		task := &record.Tasks[index]
+		switch task.Status {
+		case tasks.StatusBlocked:
+			activeTask = task
+			phase = "blocked"
+			sceneZone = "incident_zone"
+			displayStatus = fmt.Sprintf("Blocked: %s", firstNonEmpty(task.Title, task.Goal, record.Goal))
+			actorRole = "worker"
+			return runPresentation{
+				Phase:         phase,
+				SceneZone:     sceneZone,
+				DisplayStatus: displayStatus,
+				ActorRole:     actorRole,
+			}
+		case tasks.StatusInProgress:
+			activeTask = task
+		}
+	}
+
+	if activeTask != nil {
+		phase = "working"
+		sceneZone = "workbench"
+		actorRole = "worker"
+		displayStatus = fmt.Sprintf("Working: %s", firstNonEmpty(activeTask.Title, activeTask.Goal, record.Goal))
+	}
+
+	if record.Status == "stop" || allTasksDone(record.Tasks) {
+		phase = "done"
+		sceneZone = "sync_port"
+		actorRole = "supervisor"
+		displayStatus = fmt.Sprintf("Completed: %s", firstNonEmpty(record.Reason, record.Goal, "run complete"))
+	}
+
+	if record.Status == "running" && activeTask == nil && len(record.Tasks) > 0 {
+		phase = "planning"
+		sceneZone = "command_deck"
+		displayStatus = fmt.Sprintf("Planning: %s", firstNonEmpty(record.Tasks[0].Title, record.Goal, "starting run"))
+	}
+
+	return runPresentation{
+		Phase:         phase,
+		SceneZone:     sceneZone,
+		DisplayStatus: displayStatus,
+		ActorRole:     actorRole,
+	}
+}
+
+func allTasksDone(items []tasks.Task) bool {
+	if len(items) == 0 {
+		return false
+	}
+	for _, item := range items {
+		if item.Status != tasks.StatusDone {
+			return false
+		}
+	}
+	return true
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func deriveRunBeats(record runlog.RunRecord, events []runlog.Event) []runBeat {
+	if len(events) == 0 {
+		presentation := deriveRunPresentation(record)
+		return []runBeat{{
+			ID:        record.ID + "-beat-0",
+			Type:      beatTypeFromPresentation(presentation),
+			Title:     firstNonEmpty(record.Goal, record.ID),
+			Summary:   presentation.DisplayStatus,
+			Zone:      presentation.SceneZone,
+			ActorRole: presentation.ActorRole,
+		}}
+	}
+
+	beats := make([]runBeat, 0, len(events))
+	for index, event := range events {
+		beatType, zone, actorRole := classifyEventBeat(event)
+		title := firstNonEmpty(event.Kind, record.Goal, record.ID)
+		summary := firstNonEmpty(event.Message, event.Reason, event.Decision, title)
+		beats = append(beats, runBeat{
+			ID:        fmt.Sprintf("%s-beat-%d", record.ID, index),
+			Type:      beatType,
+			Title:     title,
+			Summary:   summary,
+			Zone:      zone,
+			ActorRole: actorRole,
+			CreatedAt: event.Timestamp.Format(time.RFC3339Nano),
+		})
+	}
+	return beats
+}
+
+func beatTypeFromPresentation(presentation runPresentation) string {
+	switch presentation.Phase {
+	case "working":
+		return "tool_use"
+	case "blocked":
+		return "incident"
+	case "done":
+		return "complete"
+	default:
+		return "briefing"
+	}
+}
+
+func classifyEventBeat(event runlog.Event) (beatType string, zone string, actorRole string) {
+	switch event.Kind {
+	case "run_started", "session_started":
+		return "briefing", "command_deck", "supervisor"
+	case "task_state":
+		for _, task := range event.Tasks {
+			switch task.Status {
+			case tasks.StatusBlocked:
+				return "incident", "incident_zone", "worker"
+			case tasks.StatusInProgress:
+				return "tool_use", "workbench", "worker"
+			case tasks.StatusDone:
+				return "handoff", "sync_port", "worker"
+			}
+		}
+		return "briefing", "command_deck", "supervisor"
+	case "turn_completed":
+		if event.Validated {
+			return "inspect", "test_lab", "worker"
+		}
+		if strings.TrimSpace(event.Validation) != "" {
+			return "incident", "incident_zone", "worker"
+		}
+		return "tool_use", "workbench", "worker"
+	case "run_finished":
+		if strings.EqualFold(event.Decision, "stop") {
+			return "complete", "sync_port", "supervisor"
+		}
+		return "incident", "incident_zone", "supervisor"
+	default:
+		return "briefing", "command_deck", "supervisor"
+	}
+}
+
+func deriveFrontstageTimeline(record runlog.RunRecord, events []runlog.Event, actions []runlog.ActionRecord, messages []rooms.Message) []runBeat {
+	items := deriveRunBeats(record, events)
+	for index, action := range actions {
+		items = append(items, runBeat{
+			ID:        fmt.Sprintf("%s-action-%d", record.ID, index),
+			Type:      "handoff",
+			Title:     firstNonEmpty(action.Kind, "action"),
+			Summary:   firstNonEmpty(action.Body, action.Kind, "action"),
+			Zone:      "sync_port",
+			ActorRole: firstNonEmpty(action.Role, "human"),
+			CreatedAt: action.CreatedAt.Format(time.RFC3339Nano),
+		})
+	}
+	for index, message := range messages {
+		beatType := "briefing"
+		zone := "command_deck"
+		if message.Kind == "instruction" {
+			beatType = "briefing"
+			zone = "command_deck"
+		}
+		items = append(items, runBeat{
+			ID:        fmt.Sprintf("%s-message-%d", record.ID, index),
+			Type:      beatType,
+			Title:     firstNonEmpty(message.Kind, "message"),
+			Summary:   firstNonEmpty(message.Body, message.Kind, "message"),
+			Zone:      zone,
+			ActorRole: firstNonEmpty(message.Role, "human"),
+			CreatedAt: message.CreatedAt.Format(time.RFC3339Nano),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].CreatedAt < items[j].CreatedAt
+	})
+	return items
 }
 
 func streamRunEvents(w http.ResponseWriter, r *http.Request, store runlog.EventStore, runID string) error {
